@@ -28,28 +28,18 @@ jobs:
       - name: Format check changed files
         shell: bash
         run: |
-          tmp_files="$(mktemp)"
-
-          if ! git diff -z --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD -- '*.md' '*.css' '*.scss' '*.yml' '*.yaml' >"$tmp_files"; then
-            echo "git diff failed for format check" >&2
-            rm -f "$tmp_files"
-            exit 1
-          fi
-
-          if [ ! -s "$tmp_files" ]; then
+          files=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD \
+            | grep -E '\.(md|css|scss|yml|yaml)$' || true)
+          if [ -z "$files" ]; then
             echo "No files to format-check"
             rm -f "$tmp_files"
             exit 0
           fi
-
-          mapfile -d '' -t files <"$tmp_files"
-          rm -f "$tmp_files"
-
-          bunx prettier --check "${files[@]}"
+          bunx prettier --check $files
 
       - name: Biome check changed JS/TS files
         shell: bash
-        run: BR_BIOME_SINCE="origin/${{ github.base_ref }}" bash scripts/run-biome-check.sh
+        run: BR_DIFF_RANGE="origin/${{ github.base_ref }}...HEAD" bash scripts/run-biome-check.sh
 
       - name: Ruff check changed Python files
         shell: bash

@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SINCE_REF="${1:-${BR_BIOME_SINCE:-}}"
+DIFF_RANGE="${1:-${BR_DIFF_RANGE:-main...HEAD}}"
 
-# Backward compatibility for callers that still pass BR_DIFF_RANGE="base...HEAD".
-if [[ -z "$SINCE_REF" && -n "${BR_DIFF_RANGE:-}" ]]; then
-  if [[ "$BR_DIFF_RANGE" == *"..."* ]]; then
-    SINCE_REF="${BR_DIFF_RANGE%%...*}"
-  elif [[ "$BR_DIFF_RANGE" == *".."* ]]; then
-    SINCE_REF="${BR_DIFF_RANGE%%..*}"
-  fi
+mapfile -t BIOME_FILES < <(
+  git diff --name-only --diff-filter=ACMR "$DIFF_RANGE" \
+    | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc)$' || true
+)
+
+if [[ "${#BIOME_FILES[@]}" -eq 0 ]]; then
+  echo "No JS/TS files to validate with Biome"
+  exit 0
 fi
 
-SINCE_REF="${SINCE_REF:-main}"
+# Run Biome in batches to avoid exceeding shell argument length limits
+CHUNK_SIZE=200
+total_files=${#BIOME_FILES[@]}
 
-if ! git rev-parse --verify --quiet "${SINCE_REF}^{commit}" >/dev/null; then
-  echo "Invalid Biome --since ref: ${SINCE_REF}" >&2
-  exit 1
-fi
-
-bunx @biomejs/biome check \
-  --changed \
-  --since="$SINCE_REF" \
-  --files-ignore-unknown=true \
-  --no-errors-on-unmatched
+for ((i = 0; i < total_files; i += CHUNK_SIZE)); do
+  batch=( "${BIOME_FILES[@]:i:CHUNK_SIZE}" )
+  bunx @biomejs/biome check --files-ignore-unknown=true "${batch[@]}"
+done

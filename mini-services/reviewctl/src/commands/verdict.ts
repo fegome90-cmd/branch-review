@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import fs from 'fs';
 import ora from 'ora';
 import path from 'path';
-import type { FinalResult, Verdict } from '../lib/constants.js';
+import { FinalResult, Verdict } from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
 import {
   getCurrentRun,
@@ -259,22 +259,6 @@ interface StaticGateEvaluation {
   blocking: RequiredStaticResult[];
 }
 
-function normalizeAgentReviewStatus(
-  rawStatus: unknown,
-): 'PASS' | 'FAIL' | 'PENDING' {
-  const normalized = String(rawStatus || '').toUpperCase();
-
-  if (normalized === 'PASS' || normalized === 'DONE') {
-    return 'PASS';
-  }
-
-  if (normalized === 'FAIL' || normalized === 'INVALID') {
-    return 'FAIL';
-  }
-
-  return 'PENDING';
-}
-
 function checkCompletionStatus(
   runDir: string,
   reportsDir: string,
@@ -393,9 +377,7 @@ function evaluateRequiredStatics(
 
   return {
     required,
-    blocking: required.filter(
-      (item) => item.status !== 'PASS' && item.status !== 'SKIP',
-    ),
+    blocking: required.filter((item) => item.status !== 'PASS' && item.status !== 'SKIP'),
   };
 }
 

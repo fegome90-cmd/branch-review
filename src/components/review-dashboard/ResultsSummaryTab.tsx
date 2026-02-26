@@ -111,7 +111,7 @@ function MetricPill({
   return (
     <div className={`rounded-lg p-4 text-center ${palette[color]}`}>
       <div className="text-3xl font-bold">{value}</div>
-      <div className="text-sm text-foreground/80">{label}</div>
+      <div className="text-sm text-muted-foreground">{label}</div>
     </div>
   );
 }

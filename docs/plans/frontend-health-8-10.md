@@ -1,12 +1,5 @@
 # Plan: Frontend Health a 8/10 mínimo
 
-## Estado actual
-
-- PR-1: ✅ completado
-- PR-2: ✅ completado
-- PR-3: ✅ completado
-- Validación Lighthouse + axe: ✅ completada (ver `docs/plans/frontend-health-8-10-validation-2026-02-26.md`)
-
 ## Objetivo
 
 Elevar salud del frontend en arquitectura, data layer, accesibilidad, mantenibilidad y consistencia visual a mínimo **8/10**, con ejecución incremental y bajo riesgo.
