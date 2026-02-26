@@ -212,18 +212,19 @@ function generateRiskBullets(zones: SensitiveZone[], stack: StackInfo): string[]
 
 function getStaticTools(stack: StackInfo): Array<{ name: string; reason: string }> {
   const tools: Array<{ name: string; reason: string }> = [];
-  
+
   if (stack.languages.includes('Python')) {
     tools.push({ name: 'ruff', reason: 'Python linter and formatter' });
     tools.push({ name: 'pyrefly', reason: 'Python type checker' });
+    tools.push({ name: 'pytest', reason: 'Python test execution gate' });
   }
-  
+
   if (stack.languages.includes('TypeScript') || stack.languages.includes('JavaScript')) {
     tools.push({ name: 'biome', reason: 'JS/TS linter and formatter' });
   }
-  
+
   tools.push({ name: 'coderabbit', reason: 'AI external review (optional)' });
-  
+
   return tools;
 }
 
@@ -372,6 +373,26 @@ Files with high concentration of changes:
     md += `- ${cat}: ${categories[cat]} changes\n`;
   }
 
+  const pythonTestingSignals: string[] = [];
+  if (fs.existsSync(path.join(process.cwd(), 'pytest.ini'))) {
+    pythonTestingSignals.push('pytest.ini present');
+  }
+  if (fs.existsSync(path.join(process.cwd(), 'pyproject.toml'))) {
+    pythonTestingSignals.push('pyproject.toml present');
+  }
+  if (fs.existsSync(path.join(process.cwd(), 'tests'))) {
+    pythonTestingSignals.push('tests/ directory present');
+  }
+
+  const hasTestFilesInDiff = changedFiles.some((f) => /test|spec/i.test(f));
+  const testingEvidence = [
+    hasTestFilesInDiff ? 'Test files changed (execution evidence still required)' : 'No test files changed',
+    pythonTestingSignals.length > 0
+      ? `Python testing capability: ${pythonTestingSignals.join(', ')}`
+      : 'Python testing capability: not detected',
+    'Execution evidence: not available in diff stage',
+  ].join('; ');
+
   md += `
 ### Drift Checklist
 
@@ -382,7 +403,7 @@ Files with high concentration of changes:
 | API contracts preserved? | ${changedFiles.some(f => /api|route/i.test(f)) ? 'UNKNOWN' : 'PASS'} | ${changedFiles.some(f => /api|route/i.test(f)) ? 'API files changed' : 'No API files changed'} |
 | Database schema matches plan? | ${changedFiles.some(f => /schema|migration/i.test(f)) ? 'UNKNOWN' : 'PASS'} | ${changedFiles.some(f => /schema|migration/i.test(f)) ? 'Schema/migration files changed' : 'No schema changes'} |
 | Configuration as planned? | ${changedFiles.some(f => /config|env/i.test(f)) ? 'UNKNOWN' : 'PASS'} | ${changedFiles.some(f => /config|env/i.test(f)) ? 'Config files changed' : 'No config changes'} |
-| Test coverage as planned? | ${changedFiles.some(f => /test|spec/i.test(f)) ? 'PASS' : 'UNKNOWN'} | ${changedFiles.some(f => /test|spec/i.test(f)) ? 'Tests present' : 'No test files changed'} |
+| Test coverage as planned? | UNKNOWN | ${testingEvidence} |
 
 ### Drift Verdict
 **${planResult.status === 'MISSING' || planResult.status === 'AMBIGUOUS' ? 'DRIFT_RISK' : 'ALIGNED'}**

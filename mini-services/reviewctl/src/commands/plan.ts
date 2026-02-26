@@ -249,6 +249,7 @@ ${getThirdAgentFocus(agents[2], changedFiles)}
 |------|--------|---------|
 | biome | ${stack.languages.includes('TypeScript') ? 'RUN' : 'SKIP'} | bunx biome check |
 | ruff | ${stack.languages.includes('Python') ? 'RUN' : 'SKIP'} | ruff check . |
+| pytest | ${stack.languages.includes('Python') ? 'RUN' : 'SKIP'} | pytest -q |
 
 ---
 
@@ -384,6 +385,21 @@ function generatePlanJson(
     });
   }
   
+  // pytest - required for Python projects (execution gate)
+  if (stack.languages.includes('Python')) {
+    statics.push({
+      name: 'pytest',
+      required: level !== 'quick',
+      reason: 'Python test execution gate'
+    });
+  } else {
+    statics.push({
+      name: 'pytest',
+      required: false,
+      reason: 'Not applicable - no Python detected'
+    });
+  }
+
   // pyrefly - optional for Python projects
   if (stack.languages.includes('Python')) {
     statics.push({
