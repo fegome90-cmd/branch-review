@@ -35,3 +35,11 @@ jobs:
             exit 0
           fi
           bunx prettier --check $files
+
+      - name: Biome check changed JS/TS files
+        shell: bash
+        run: BR_DIFF_RANGE="origin/${{ github.base_ref }}...HEAD" bash scripts/run-biome-check.sh
+
+      - name: Ruff check changed Python files
+        shell: bash
+        run: BR_DIFF_RANGE="origin/${{ github.base_ref }}...HEAD" bash scripts/run-ruff-check.sh

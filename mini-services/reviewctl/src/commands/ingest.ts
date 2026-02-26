@@ -2,21 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
-import {
-  AgentName,
-  AGENT_NAMES
-} from '../lib/constants.js';
-import {
-  getCurrentRun,
-  getRunDir,
-  saveCurrentRun
-} from '../lib/utils.js';
+import { AgentName, AGENT_NAMES } from '../lib/constants.js';
+import { getCurrentRun, getRunDir, saveCurrentRun } from '../lib/utils.js';
 import {
   validateReport,
   computeHash,
   sanitizeName,
   isValidName,
-  ValidationResult
+  ValidationResult,
 } from '../lib/contract-validator.js';
 
 // Static tools configuration
@@ -30,37 +23,37 @@ export async function ingestCommand(options: {
   overwrite?: boolean;
 }) {
   const spinner = ora('Ingesting report...').start();
-  
+
   try {
     const run = getCurrentRun();
     if (!run) {
       spinner.fail('No active review run. Run: reviewctl init');
       process.exit(1);
     }
-    
+
     const runDir = getRunDir(run.run_id);
     const reportsDir = path.join(runDir, 'reports');
     const tasksDir = path.join(runDir, 'tasks');
     const staticsDir = path.join(runDir, 'statics');
-    
+
     // Ensure directories exist
     for (const dir of [reportsDir, tasksDir, staticsDir]) {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
     }
-    
+
     // Read input from file or stdin
     let content: string;
     let sourcePath: string | null = null;
-    
+
     if (options.input) {
       // Validate input path - only block relative paths with traversal
       if (options.input.includes('..') && !path.isAbsolute(options.input)) {
         spinner.fail('Path traversal detected in input path');
         process.exit(1);
       }
-      
+
       if (!fs.existsSync(options.input)) {
         spinner.fail(`Input file not found: ${options.input}`);
         process.exit(1);
@@ -72,21 +65,21 @@ export async function ingestCommand(options: {
       content = await readStdin();
       sourcePath = 'stdin';
     }
-    
+
     if (!content || content.trim().length === 0) {
       spinner.fail('No content provided. Use --input <file> or pipe content via stdin.');
       process.exit(1);
     }
-    
+
     // Determine target: agent or static
     if (options.agent) {
       await ingestAgentReport(
-        options.agent, 
-        content, 
-        run, 
-        runDir, 
-        reportsDir, 
-        tasksDir, 
+        options.agent,
+        content,
+        run,
+        runDir,
+        reportsDir,
+        tasksDir,
         spinner,
         sourcePath,
         options.extra || false,
@@ -94,9 +87,9 @@ export async function ingestCommand(options: {
       );
     } else if (options.static) {
       await ingestStaticReport(
-        options.static, 
-        content, 
-        runDir, 
+        options.static,
+        content,
+        runDir,
         staticsDir,
         spinner,
         sourcePath,
@@ -109,7 +102,6 @@ export async function ingestCommand(options: {
       console.log(chalk.gray('  Statics: ' + STATIC_TOOLS.join(', ')));
       process.exit(1);
     }
-    
   } catch (error) {
     spinner.fail(chalk.red('Ingest failed'));
     console.error(chalk.red(error instanceof Error ? error.message : String(error)));
@@ -149,32 +141,31 @@ async function ingestAgentReport(
 ): Promise<void> {
   // Sanitize and validate agent name
   const sanitizedAgent = sanitizeName(agentName);
-  
+
   if (!isValidName(sanitizedAgent)) {
     spinner.fail(`Invalid agent name: ${agentName}`);
     console.log(chalk.gray('  Name must match pattern: [a-z0-9-]+'));
     console.log(chalk.gray('  Valid agents: ' + AGENT_NAMES.join(', ')));
     process.exit(1);
   }
-  
+
   // Check against plan (plan binding)
   const planJson = loadPlanJson(runDir);
   if (planJson && !isExtra) {
-    const allPlannedAgents = [
-      ...planJson.required_agents,
-      ...planJson.optional_agents
-    ];
-    
+    const allPlannedAgents = [...planJson.required_agents, ...planJson.optional_agents];
+
     if (!allPlannedAgents.includes(sanitizedAgent)) {
       spinner.fail(`Agent "${sanitizedAgent}" is not in the plan`);
       console.log(chalk.gray(`  Required agents: ${planJson.required_agents.join(', ')}`));
-      console.log(chalk.gray(`  Optional agents: ${planJson.optional_agents.join(', ') || 'None'}`));
+      console.log(
+        chalk.gray(`  Optional agents: ${planJson.optional_agents.join(', ') || 'None'}`)
+      );
       console.log(chalk.yellow(`\n  Use --extra to ingest reports for agents not in the plan`));
       console.log(chalk.yellow(`  (Extra reports are stored but not counted toward completion)`));
       process.exit(1);
     }
   }
-  
+
   // Check for overwrite protection
   const reportPath = path.join(reportsDir, `reviewer_${sanitizedAgent}.md`);
   if (fs.existsSync(reportPath) && !allowOverwrite) {
@@ -183,29 +174,29 @@ async function ingestAgentReport(
     console.log(chalk.yellow(`  Use --overwrite to replace existing report`));
     process.exit(1);
   }
-  
+
   // Validate against contract
   spinner.text = 'Validating report against SSOT contract...';
   const validation = validateReport(content);
-  
+
   // Write the report
   fs.writeFileSync(reportPath, content);
-  
+
   // Create agent task directory
   const agentTaskDir = path.join(tasksDir, sanitizedAgent);
   if (!fs.existsSync(agentTaskDir)) {
     fs.mkdirSync(agentTaskDir, { recursive: true });
   }
-  
+
   // Determine status based on validation
   const statusValue = validation.valid ? 'DONE' : 'INVALID';
-  
+
   // Write status.json with hash and metadata
   const statusPath = path.join(agentTaskDir, 'status.json');
-  const previousStatus = fs.existsSync(statusPath) 
+  const previousStatus = fs.existsSync(statusPath)
     ? JSON.parse(fs.readFileSync(statusPath, 'utf-8'))
     : {};
-  
+
   const status = {
     agent: sanitizedAgent,
     status: statusValue,
@@ -219,19 +210,16 @@ async function ingestAgentReport(
       valid: validation.valid,
       errors: validation.errors,
       warnings: validation.warnings,
-      line_count: validation.lineCount
-    }
+      line_count: validation.lineCount,
+    },
   };
   fs.writeFileSync(statusPath, JSON.stringify(status, null, 2));
-  
+
   // Write result.json with parsed findings
   const result = parseReport(content, sanitizedAgent as AgentName, run.run_id);
   result.validation = validation;
-  fs.writeFileSync(
-    path.join(agentTaskDir, 'result.json'),
-    JSON.stringify(result, null, 2)
-  );
-  
+  fs.writeFileSync(path.join(agentTaskDir, 'result.json'), JSON.stringify(result, null, 2));
+
   // Show result
   if (!validation.valid) {
     spinner.warn(chalk.yellow(`Report ingested but INVALID: ${sanitizedAgent}`));
@@ -249,27 +237,27 @@ async function ingestAgentReport(
     console.log(chalk.gray('  Fix the report and re-ingest with --overwrite'));
     process.exit(2);
   }
-  
+
   spinner.succeed(chalk.green(`Report ingested for agent: ${sanitizedAgent}`));
   console.log(chalk.gray(`  Report: ${reportPath}`));
   console.log(chalk.gray(`  Status: ${statusValue}`));
   console.log(chalk.gray(`  Hash: ${status.content_hash}`));
-  
+
   if (validation.warnings.length > 0) {
     console.log(chalk.yellow('\n  Warnings:'));
     for (const warn of validation.warnings) {
       console.log(chalk.yellow(`    - ${warn}`));
     }
   }
-  
+
   // Show completion status
   const stats = checkCompletionStatus(run.run_id, runDir);
   console.log(chalk.gray(`\n  Progress: ${stats.completed}/${stats.total} reports valid`));
-  
+
   if (stats.invalid.length > 0) {
     console.log(chalk.red(`  Invalid: ${stats.invalid.join(', ')}`));
   }
-  
+
   if (stats.missing.length > 0) {
     console.log(chalk.yellow(`  Missing: ${stats.missing.join(', ')}`));
     console.log(chalk.gray(`\n  Next: reviewctl ingest --agent <name> --input <file>`));
@@ -290,19 +278,19 @@ async function ingestStaticReport(
 ): Promise<void> {
   // Sanitize and validate tool name
   const sanitizedTool = sanitizeName(toolName);
-  
+
   if (!isValidName(sanitizedTool)) {
     spinner.fail(`Invalid static tool name: ${toolName}`);
     console.log(chalk.gray('  Name must match pattern: [a-z0-9-]+'));
     console.log(chalk.gray('  Valid tools: ' + STATIC_TOOLS.join(', ')));
     process.exit(1);
   }
-  
+
   // Check against plan (plan binding)
   const planJson = loadPlanJson(runDir);
   if (planJson && !isExtra) {
-    const plannedTools = planJson.statics.map(s => s.name);
-    
+    const plannedTools = planJson.statics.map((s) => s.name);
+
     if (!plannedTools.includes(sanitizedTool)) {
       spinner.fail(`Static tool "${sanitizedTool}" is not in the plan`);
       console.log(chalk.gray(`  Planned tools: ${plannedTools.join(', ')}`));
@@ -310,7 +298,7 @@ async function ingestStaticReport(
       process.exit(1);
     }
   }
-  
+
   // Check for overwrite protection
   const reportPath = path.join(staticsDir, `${sanitizedTool}.md`);
   if (fs.existsSync(reportPath) && !allowOverwrite) {
@@ -319,24 +307,32 @@ async function ingestStaticReport(
     console.log(chalk.yellow(`  Use --overwrite to replace existing report`));
     process.exit(1);
   }
-  
+
   // Write the report
   fs.writeFileSync(reportPath, `# ${sanitizedTool} Analysis\n\n\`\`\`\n${content}\n\`\`\`\n`);
-  
+
   // Determine if this was required or optional
   let isRequired = false;
   if (planJson) {
-    const toolConfig = planJson.statics.find(s => s.name === sanitizedTool);
+    const toolConfig = planJson.statics.find((s) => s.name === sanitizedTool);
     isRequired = toolConfig?.required || false;
   }
-  
+
   const pytestSummary = sanitizedTool === 'pytest' ? parsePytestSummary(content) : null;
+  const staticSummary =
+    pytestSummary === null
+      ? parseStaticSummary(sanitizedTool, content)
+      : {
+          status: pytestSummary.status,
+          reason: pytestSummary.reason,
+          issues: pytestSummary.failed + pytestSummary.errors,
+        };
 
   // Write status.json
   const statusPath = path.join(staticsDir, `${sanitizedTool}_status.json`);
   const status = {
     tool: sanitizedTool,
-    status: pytestSummary?.status || 'DONE',
+    status: staticSummary.status,
     required: isRequired,
     completed_at: new Date().toISOString(),
     source_path: sourcePath,
@@ -344,7 +340,10 @@ async function ingestStaticReport(
     is_extra: isExtra,
     execution:
       pytestSummary === null
-        ? undefined
+        ? {
+            issues: staticSummary.issues,
+            reason: staticSummary.reason,
+          }
         : {
             passed: pytestSummary.passed,
             failed: pytestSummary.failed,
@@ -363,31 +362,29 @@ async function ingestStaticReport(
   console.log(chalk.gray(`  Status: ${status.status}`));
   console.log(chalk.gray(`  Required: ${isRequired}`));
   console.log(chalk.gray(`  Hash: ${status.content_hash}`));
-  if (pytestSummary?.reason) {
-    console.log(chalk.gray(`  Pytest parse: ${pytestSummary.reason}`));
-  }
+  console.log(chalk.gray(`  Parser: ${staticSummary.reason}`));
 }
 
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
     process.stdin.setEncoding('utf-8');
-    
+
     process.stdin.on('readable', () => {
       let chunk;
       while ((chunk = process.stdin.read()) !== null) {
         data += chunk;
       }
     });
-    
+
     process.stdin.on('end', () => {
       resolve(data);
     });
-    
+
     process.stdin.on('error', (err) => {
       reject(err);
     });
-    
+
     // Timeout if no input
     setTimeout(() => {
       if (data.length === 0) {
@@ -397,8 +394,16 @@ function readStdin(): Promise<string> {
   });
 }
 
+type StaticReviewStatus = 'PASS' | 'FAIL' | 'UNKNOWN' | 'SKIP';
+
+type StaticSummary = {
+  status: StaticReviewStatus;
+  reason: string;
+  issues: number;
+};
+
 type PytestSummary = {
-  status: 'DONE' | 'FAILED' | 'UNKNOWN';
+  status: 'PASS' | 'FAIL' | 'UNKNOWN';
   passed: number;
   failed: number;
   errors: number;
@@ -408,6 +413,147 @@ type PytestSummary = {
   coverageMet: boolean | null;
   reason: string;
 };
+
+function parseStaticSummary(toolName: string, content: string): StaticSummary {
+  if (toolName === 'biome') {
+    return parseBiomeSummary(content);
+  }
+
+  if (toolName === 'ruff') {
+    return parseRuffSummary(content);
+  }
+
+  return parseGenericStaticSummary(content, toolName);
+}
+
+function parseBiomeSummary(content: string): StaticSummary {
+  const normalized = content.toLowerCase();
+
+  if (content.trim().length === 0) {
+    return {
+      status: 'PASS',
+      reason: 'Biome output is empty (no findings reported)',
+      issues: 0,
+    };
+  }
+
+  if (/no files were processed/i.test(content)) {
+    return {
+      status: 'SKIP',
+      reason: 'No files were processed by Biome',
+      issues: 0,
+    };
+  }
+
+  const errors = readCount(content, /Found\s+(\d+)\s+errors?/i);
+  const warnings = readCount(content, /Found\s+(\d+)\s+warnings?/i);
+  const issues = errors + warnings;
+
+  if (errors > 0 || /some errors were emitted|\bcheck\s+×/i.test(normalized)) {
+    return {
+      status: 'FAIL',
+      reason: `Biome reported ${issues > 0 ? issues : 1} issue(s)`,
+      issues: issues > 0 ? issues : 1,
+    };
+  }
+
+  if (/found\s+0\s+errors?/i.test(content) || /checked\s+\d+\s+files/i.test(content)) {
+    return {
+      status: 'PASS',
+      reason: 'Biome output parsed successfully',
+      issues: 0,
+    };
+  }
+
+  return {
+    status: 'UNKNOWN',
+    reason: 'Could not determine Biome result conclusively',
+    issues,
+  };
+}
+
+function parseRuffSummary(content: string): StaticSummary {
+  if (/warning:\s+No Python files found/i.test(content)) {
+    return {
+      status: 'SKIP',
+      reason: 'Ruff not applicable: no Python files found',
+      issues: 0,
+    };
+  }
+
+  if (/All checks passed!/i.test(content)) {
+    return {
+      status: 'PASS',
+      reason: 'Ruff reported all checks passed',
+      issues: 0,
+    };
+  }
+
+  const errors = readCount(content, /Found\s+(\d+)\s+errors?/i);
+  const hasRuleFindings = /^[^\n:]+:\d+:\d+:\s+[A-Z]\d+/m.test(content);
+
+  if (errors > 0 || hasRuleFindings) {
+    return {
+      status: 'FAIL',
+      reason: `Ruff reported ${errors > 0 ? errors : 1} issue(s)`,
+      issues: errors > 0 ? errors : 1,
+    };
+  }
+
+  if (content.trim().length === 0) {
+    return {
+      status: 'PASS',
+      reason: 'Ruff output is empty (no findings reported)',
+      issues: 0,
+    };
+  }
+
+  return {
+    status: 'UNKNOWN',
+    reason: 'Could not determine Ruff result conclusively',
+    issues: errors,
+  };
+}
+
+function parseGenericStaticSummary(content: string, toolName: string): StaticSummary {
+  const normalized = content.toLowerCase();
+
+  if (normalized.trim().length === 0) {
+    return {
+      status: 'PASS',
+      reason: `${toolName} output is empty (no findings reported)`,
+      issues: 0,
+    };
+  }
+
+  if (/all checks passed|no issues found|0 errors?/i.test(content)) {
+    return {
+      status: 'PASS',
+      reason: `${toolName} output indicates success`,
+      issues: 0,
+    };
+  }
+
+  const issues = readCount(content, /Found\s+(\d+)\s+errors?/i);
+  if (issues > 0 || /\b(failed|error|violation)s?\b/i.test(normalized)) {
+    return {
+      status: 'FAIL',
+      reason: `${toolName} output indicates blocking issues`,
+      issues: issues > 0 ? issues : 1,
+    };
+  }
+
+  return {
+    status: 'UNKNOWN',
+    reason: `Could not determine ${toolName} result conclusively`,
+    issues,
+  };
+}
+
+function readCount(content: string, pattern: RegExp): number {
+  const match = content.match(pattern);
+  return match ? Number(match[1]) : 0;
+}
 
 function parsePytestSummary(content: string): PytestSummary {
   const normalized = content.toLowerCase();
@@ -434,7 +580,7 @@ function parsePytestSummary(content: string): PytestSummary {
 
   if (failed > 0 || errors > 0 || /\bfailed\b/i.test(normalized)) {
     return {
-      status: 'FAILED',
+      status: 'FAIL',
       passed,
       failed,
       errors,
@@ -449,7 +595,7 @@ function parsePytestSummary(content: string): PytestSummary {
   if (passed > 0 || /\b\d+\s+passed\b/i.test(summaryLine)) {
     if (coveragePercent !== null && coverageMet === false) {
       return {
-        status: 'FAILED',
+        status: 'FAIL',
         passed,
         failed,
         errors,
@@ -462,7 +608,7 @@ function parsePytestSummary(content: string): PytestSummary {
     }
 
     return {
-      status: 'DONE',
+      status: 'PASS',
       passed,
       failed,
       errors,
@@ -494,53 +640,59 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
     timestamp: new Date().toISOString(),
     findings: [],
     statistics: { p0_count: 0, p1_count: 0, p2_count: 0 },
-    verdict: { result: 'PASS', justification: 'Parsed from ingested report' }
+    verdict: { result: 'PASS', justification: 'Parsed from ingested report' },
   };
-  
+
   // Extract P0 findings
   const p0Matches = content.match(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*([^\n]+)/gi);
   if (p0Matches) {
-    result.findings.push(...p0Matches.map((m, i) => ({
-      id: `P0-${i + 1}`,
-      priority: 'P0',
-      title: m.replace(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*/, '').trim(),
-      location: { file: 'Unknown' },
-      description: 'Extracted from report',
-      evidence: { snippet: 'See full report' }
-    })));
+    result.findings.push(
+      ...p0Matches.map((m, i) => ({
+        id: `P0-${i + 1}`,
+        priority: 'P0',
+        title: m.replace(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*/, '').trim(),
+        location: { file: 'Unknown' },
+        description: 'Extracted from report',
+        evidence: { snippet: 'See full report' },
+      }))
+    );
   }
-  
+
   // Extract P1 findings
   const p1Matches = content.match(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*([^\n]+)/gi);
   if (p1Matches) {
-    result.findings.push(...p1Matches.map((m, i) => ({
-      id: `P1-${i + 1}`,
-      priority: 'P1',
-      title: m.replace(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*/, '').trim(),
-      location: { file: 'Unknown' },
-      description: 'Extracted from report',
-      evidence: { snippet: 'See full report' }
-    })));
+    result.findings.push(
+      ...p1Matches.map((m, i) => ({
+        id: `P1-${i + 1}`,
+        priority: 'P1',
+        title: m.replace(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*/, '').trim(),
+        location: { file: 'Unknown' },
+        description: 'Extracted from report',
+        evidence: { snippet: 'See full report' },
+      }))
+    );
   }
-  
+
   // Extract P2 findings
   const p2Matches = content.match(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*([^\n]+)/gi);
   if (p2Matches) {
-    result.findings.push(...p2Matches.map((m, i) => ({
-      id: `P2-${i + 1}`,
-      priority: 'P2',
-      title: m.replace(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*/, '').trim(),
-      location: { file: 'Unknown' },
-      description: 'Extracted from report',
-      evidence: { snippet: 'See full report' }
-    })));
+    result.findings.push(
+      ...p2Matches.map((m, i) => ({
+        id: `P2-${i + 1}`,
+        priority: 'P2',
+        title: m.replace(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*/, '').trim(),
+        location: { file: 'Unknown' },
+        description: 'Extracted from report',
+        evidence: { snippet: 'See full report' },
+      }))
+    );
   }
-  
+
   // Count statistics
   result.statistics.p0_count = result.findings.filter((f: any) => f.priority === 'P0').length;
   result.statistics.p1_count = result.findings.filter((f: any) => f.priority === 'P1').length;
   result.statistics.p2_count = result.findings.filter((f: any) => f.priority === 'P2').length;
-  
+
   // Check for PASS/FAIL in verdict section
   if (/##\s*Verdict[^#]*\*\*FAIL\*\*/i.test(content)) {
     result.verdict.result = 'FAIL';
@@ -549,39 +701,42 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
       result.verdict.justification = justificationMatch[1].trim();
     }
   }
-  
+
   return result;
 }
 
-function checkCompletionStatus(runId: string, runDir: string): { 
-  completed: number; 
-  total: number; 
+function checkCompletionStatus(
+  runId: string,
+  runDir: string
+): {
+  completed: number;
+  total: number;
   missing: string[];
   invalid: string[];
 } {
   const reportsDir = path.join(runDir, 'reports');
   const tasksDir = path.join(runDir, 'tasks');
   const planJson = loadPlanJson(runDir);
-  
+
   // Get required agents from plan
   const requiredAgents = planJson?.required_agents || [];
-  
+
   // Check status of each required agent
   const missing: string[] = [];
   const invalid: string[] = [];
   let completed = 0;
-  
+
   for (const agent of requiredAgents) {
     const statusPath = path.join(tasksDir, agent, 'status.json');
-    
+
     if (!fs.existsSync(statusPath)) {
       missing.push(agent);
       continue;
     }
-    
+
     try {
       const status = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
-      
+
       if (status.status === 'DONE' && status.validation?.valid) {
         completed++;
       } else if (status.status === 'INVALID') {
@@ -593,11 +748,11 @@ function checkCompletionStatus(runId: string, runDir: string): {
       missing.push(agent);
     }
   }
-  
-  return { 
-    completed, 
-    total: requiredAgents.length, 
+
+  return {
+    completed,
+    total: requiredAgents.length,
     missing,
-    invalid
+    invalid,
   };
 }
