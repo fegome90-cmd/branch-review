@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+HEAD_SHA=$(git rev-parse --short HEAD)
+MARKER_FILE=".git/.pre-pr-ok"
+
+if [[ ! -f "$MARKER_FILE" ]]; then
+  echo "❌ pre-push blocked: pre-pr check missing"
+  echo "Run: bun run flow:prepr"
+  exit 1
+fi
+
+MARKER=$(cat "$MARKER_FILE")
+EXPECTED_PREFIX="${BRANCH}:${HEAD_SHA}:"
+
+if [[ "$MARKER" != ${EXPECTED_PREFIX}* ]]; then
+  echo "❌ pre-push blocked: pre-pr check is stale for current HEAD"
+  echo "Current: ${BRANCH}@${HEAD_SHA}"
+  echo "Marker:  ${MARKER}"
+  echo "Run: bun run flow:prepr"
+  exit 1
+fi
+
+echo "✅ pre-push: pre-pr check valid for ${BRANCH}@${HEAD_SHA}"

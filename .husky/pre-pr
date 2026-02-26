@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+HEAD_SHA=$(git rev-parse --short HEAD)
+MARKER_FILE=".git/.pre-pr-ok"
+
+if [[ "$BRANCH" == "main" ]]; then
+  echo "❌ pre-pr: do not open PRs directly from main"
+  exit 1
+fi
+
+echo "▶ pre-pr: running lint"
+bun run lint
+
+echo "▶ pre-pr: running tests"
+bun test
+
+if [[ -f "tsconfig.app.json" ]]; then
+  echo "▶ pre-pr: running typecheck:app"
+  bun run typecheck:app
+else
+  echo "ℹ pre-pr: skipping typecheck:app (tsconfig.app.json not found)"
+fi
+
+echo "${BRANCH}:${HEAD_SHA}:$(date -u +%FT%TZ)" > "$MARKER_FILE"
+echo "✅ pre-pr: checks passed for ${BRANCH}@${HEAD_SHA}"
