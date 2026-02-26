@@ -2,50 +2,44 @@ import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
-import {
-  REVIEW_RUNS_DIR,
-  FinalResult,
-  Verdict
-} from '../lib/constants.js';
-import {
-  getCurrentRun,
-  getRunDir,
-  saveCurrentRun,
-  getDiffStats
-} from '../lib/utils.js';
+import { REVIEW_RUNS_DIR, FinalResult, Verdict } from '../lib/constants.js';
+import { getCurrentRun, getRunDir, saveCurrentRun, getDiffStats } from '../lib/utils.js';
+import { loadPlanJson } from '../lib/plan-utils.js';
 
 export async function verdictCommand(options: { json?: boolean; allowIncomplete?: boolean }) {
   const spinner = ora('Generating verdict...').start();
-  
+
   try {
     const run = getCurrentRun();
     if (!run) {
       spinner.fail('No active review run. Run: reviewctl init');
       process.exit(1);
     }
-    
+
     const runDir = getRunDir(run.run_id);
     const reportsDir = path.join(runDir, 'reports');
     const tasksDir = path.join(runDir, 'tasks');
     const staticsDir = path.join(runDir, 'statics');
-    
+
     // Check if reports directory exists
     if (!fs.existsSync(reportsDir)) {
       spinner.fail('No reports directory found. Run: reviewctl run');
       process.exit(1);
     }
-    
+
     // Check for missing reports
     spinner.text = 'Checking report completion status...';
     const completionStatus = checkCompletionStatus(runDir, reportsDir, tasksDir);
-    
+
     // Check for INVALID reports (higher priority than missing)
     if (completionStatus.invalid.length > 0 && !options.allowIncomplete) {
       spinner.warn(chalk.yellow('INVALID: Reports failed contract validation'));
-      
-      console.log(chalk.gray(`\n  Completed: ${completionStatus.completed}/${completionStatus.total}`));
+
+      console.log(
+        chalk.gray(`\n  Completed: ${completionStatus.completed}/${completionStatus.total}`)
+      );
       console.log(chalk.red(`  Invalid: ${completionStatus.invalid.join(', ')}`));
-      
+
       for (const agent of completionStatus.invalid) {
         const details = completionStatus.invalidDetails[agent] || [];
         console.log(chalk.red(`\n  ${agent}:`));
@@ -53,9 +47,9 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
           console.log(chalk.red(`    - ${err}`));
         }
       }
-      
+
       console.log(chalk.yellow('\n  Fix the invalid reports and re-ingest with --overwrite'));
-      
+
       // Write partial result
       const partialJson = {
         run_id: run.run_id,
@@ -66,25 +60,27 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
         missing_agents: completionStatus.missing,
         invalid_agents: completionStatus.invalid,
         invalid_details: completionStatus.invalidDetails,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
       fs.writeFileSync(path.join(runDir, 'final.json'), JSON.stringify(partialJson, null, 2));
-      
+
       // Exit code 2 for INCOMPLETE/INVALID
       process.exit(2);
     }
-    
+
     if (completionStatus.missing.length > 0 && !options.allowIncomplete) {
       spinner.warn(chalk.yellow('INCOMPLETE: Missing required reports'));
-      
-      console.log(chalk.gray(`\n  Completed: ${completionStatus.completed}/${completionStatus.total}`));
+
+      console.log(
+        chalk.gray(`\n  Completed: ${completionStatus.completed}/${completionStatus.total}`)
+      );
       console.log(chalk.red(`  Missing: ${completionStatus.missing.join(', ')}`));
       console.log(chalk.gray('\n  To ingest missing reports:'));
       for (const agent of completionStatus.missing) {
         console.log(chalk.gray(`    reviewctl ingest --agent ${agent} --input <report.md>`));
       }
       console.log(chalk.gray('\n  Or use --allow-incomplete to generate verdict anyway'));
-      
+
       // Write partial result
       const partialJson = {
         run_id: run.run_id,
@@ -94,36 +90,36 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
         completed_agents: completionStatus.completed,
         missing_agents: completionStatus.missing,
         invalid_agents: completionStatus.invalid,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
       fs.writeFileSync(path.join(runDir, 'final.json'), JSON.stringify(partialJson, null, 2));
-      
+
       // Exit code 2 for INCOMPLETE
       process.exit(2);
     }
-    
+
     // Aggregate all reports
     spinner.text = 'Aggregating agent reports...';
     const aggregated = aggregateReports(reportsDir, tasksDir, staticsDir, run);
-    
+
     // Generate verdict
     const verdict = determineVerdict(aggregated);
-    
+
     // Generate final.md
     spinner.text = 'Generating final report...';
     const finalMd = generateFinalMd(aggregated, verdict, run, completionStatus);
     fs.writeFileSync(path.join(runDir, 'final.md'), finalMd);
-    
+
     // Generate final.json
     const finalJson = generateFinalJson(aggregated, verdict, run, completionStatus);
     fs.writeFileSync(path.join(runDir, 'final.json'), JSON.stringify(finalJson, null, 2));
-    
+
     // Update run status
     run.status = 'completed';
     saveCurrentRun(run);
-    
+
     spinner.succeed(chalk.green('Verdict generated'));
-    
+
     if (!options.json) {
       console.log('\n' + chalk.bold('═'.repeat(50)));
       if (verdict === 'PASS') {
@@ -137,7 +133,7 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
       console.log(chalk.gray(`  P2 (Minor): ${aggregated.p2Total}`));
       console.log(chalk.gray(`  Reports: ${completionStatus.completed}/${completionStatus.total}`));
       console.log(chalk.gray(`\n  Output: _ctx/review_runs/${run.run_id}/final.md`));
-      
+
       if (verdict === 'PASS') {
         console.log(chalk.gray('\n  Next: reviewctl merge'));
       } else {
@@ -146,10 +142,9 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
     } else {
       console.log(JSON.stringify(finalJson, null, 2));
     }
-    
+
     // Exit code 0 for PASS, 1 for FAIL
     process.exit(verdict === 'PASS' ? 0 : 1);
-    
   } catch (error) {
     spinner.fail(chalk.red('Failed to generate verdict'));
     console.error(chalk.red(error instanceof Error ? error.message : String(error)));
@@ -166,24 +161,11 @@ interface CompletionStatus {
   invalidDetails: Record<string, string[]>;
 }
 
-interface PlanJson {
-  required_agents: string[];
-  optional_agents: string[];
-}
-
-function loadPlanJson(runDir: string): PlanJson | null {
-  const planJsonPath = path.join(runDir, 'plan.json');
-  if (!fs.existsSync(planJsonPath)) {
-    return null;
-  }
-  try {
-    return JSON.parse(fs.readFileSync(planJsonPath, 'utf-8'));
-  } catch {
-    return null;
-  }
-}
-
-function checkCompletionStatus(runDir: string, reportsDir: string, tasksDir: string): CompletionStatus {
+function checkCompletionStatus(
+  runDir: string,
+  reportsDir: string,
+  tasksDir: string
+): CompletionStatus {
   const planJson = loadPlanJson(runDir);
 
   // Source of truth: plan.json required agents; fallback to REQUEST files.
@@ -217,7 +199,10 @@ function checkCompletionStatus(runDir: string, reportsDir: string, tasksDir: str
 
         if (statusJson.status === 'DONE' && statusJson.validation?.valid) {
           completed++;
-        } else if (statusJson.status === 'INVALID' || (statusJson.validation && !statusJson.validation.valid)) {
+        } else if (
+          statusJson.status === 'INVALID' ||
+          (statusJson.validation && !statusJson.validation.valid)
+        ) {
           invalid.push(agent);
           invalidDetails[agent] = statusJson.validation?.errors || ['Contract validation failed'];
         } else {
@@ -237,7 +222,7 @@ function checkCompletionStatus(runDir: string, reportsDir: string, tasksDir: str
     total: requiredAgents.length,
     missing,
     invalid,
-    invalidDetails
+    invalidDetails,
   };
 }
 
@@ -264,42 +249,42 @@ function aggregateReports(
     agents: {},
     statics: {},
     topP0Findings: [],
-    topP1Findings: []
+    topP1Findings: [],
   };
-  
+
   // Aggregate agent results
-  const taskDirs = fs.readdirSync(tasksDir).filter(f => {
+  const taskDirs = fs.readdirSync(tasksDir).filter((f) => {
     const stat = fs.statSync(path.join(tasksDir, f));
     return stat.isDirectory();
   });
-  
+
   for (const agent of taskDirs) {
     const resultPath = path.join(tasksDir, agent, 'result.json');
     const statusPath = path.join(tasksDir, agent, 'status.json');
-    
+
     // Check status
     let agentStatus = 'pending';
     if (fs.existsSync(statusPath)) {
       const status = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
       agentStatus = status.status || 'pending';
     }
-    
+
     if (fs.existsSync(resultPath) && agentStatus === 'DONE') {
       try {
         const agentResult = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
         const stats = agentResult.statistics || { p0_count: 0, p1_count: 0, p2_count: 0 };
-        
+
         result.agents[agent] = {
           p0: stats.p0_count,
           p1: stats.p1_count,
           p2: stats.p2_count,
-          status: 'done'
+          status: 'done',
         };
-        
+
         result.p0Total += stats.p0_count;
         result.p1Total += stats.p1_count;
         result.p2Total += stats.p2_count;
-        
+
         // Collect P0/P1 findings
         if (agentResult.findings) {
           for (const finding of agentResult.findings) {
@@ -317,34 +302,34 @@ function aggregateReports(
       result.agents[agent] = { p0: 0, p1: 0, p2: 0, status: agentStatus };
     }
   }
-  
+
   // Aggregate static analysis
   if (fs.existsSync(staticsDir)) {
-    const statusFiles = fs.readdirSync(staticsDir).filter(f => f.endsWith('_status.json'));
+    const statusFiles = fs.readdirSync(staticsDir).filter((f) => f.endsWith('_status.json'));
     for (const file of statusFiles) {
       const toolName = file.replace('_status.json', '');
       const statusPath = path.join(staticsDir, file);
       const reportPath = path.join(staticsDir, `${toolName}.md`);
-      
+
       try {
         const status = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
-        
+
         let issues = 0;
         if (fs.existsSync(reportPath)) {
           const content = fs.readFileSync(reportPath, 'utf-8');
           issues = (content.match(/error|warning|Error|Warning/g) || []).length;
         }
-        
-        result.statics[toolName] = { 
-          issues, 
-          status: status.status || 'unknown'
+
+        result.statics[toolName] = {
+          issues,
+          status: status.status || 'unknown',
         };
       } catch (e) {
         result.statics[toolName] = { issues: 0, status: 'error' };
       }
     }
   }
-  
+
   return result;
 }
 
@@ -361,7 +346,7 @@ function generateFinalMd(
 ): string {
   const timestamp = new Date().toISOString();
   const diffStats = getDiffStats();
-  
+
   let md = `# Final Review Report
 
 ## Run Information
@@ -373,9 +358,11 @@ function generateFinalMd(
 
 ## Executive Summary
 
-${verdict === 'PASS' ? 
-  'The review completed successfully with no blocking issues. The changes are ready for merge.' :
-  'The review found critical issues that must be addressed before merge. Please review P0 findings below.'}
+${
+  verdict === 'PASS'
+    ? 'The review completed successfully with no blocking issues. The changes are ready for merge.'
+    : 'The review found critical issues that must be addressed before merge. Please review P0 findings below.'
+}
 
 ---
 
@@ -384,9 +371,11 @@ ${verdict === 'PASS' ?
 # **${verdict === 'PASS' ? 'PASS' : 'FAIL'}**
 
 ### Rationale
-${verdict === 'PASS' ?
-  `No P0 (blocking) issues found. ${aggregated.p1Total} P1 and ${aggregated.p2Total} P2 issues were identified for follow-up.` :
-  `${aggregated.p0Total} P0 (blocking) issue(s) found. These must be resolved before merge.`}
+${
+  verdict === 'PASS'
+    ? `No P0 (blocking) issues found. ${aggregated.p1Total} P1 and ${aggregated.p2Total} P2 issues were identified for follow-up.`
+    : `${aggregated.p0Total} P0 (blocking) issue(s) found. These must be resolved before merge.`
+}
 
 ---
 
@@ -415,9 +404,14 @@ ${verdict === 'PASS' ?
 `;
 
   for (const [agent, stats] of Object.entries(aggregated.agents)) {
-    const statusIcon = stats.status === 'done' ? '✓' : 
-                       stats.status === 'pending' ? '⏳' : 
-                       stats.status === 'error' ? '✗' : '?';
+    const statusIcon =
+      stats.status === 'done'
+        ? '✓'
+        : stats.status === 'pending'
+          ? '⏳'
+          : stats.status === 'error'
+            ? '✗'
+            : '?';
     md += `| ${agent} | ${stats.p0} | ${stats.p1} | ${stats.p2} | ${statusIcon} |\n`;
   }
 
@@ -467,7 +461,7 @@ ${verdict === 'PASS' ?
 
 `;
     }
-    
+
     if (aggregated.topP1Findings.length > 5) {
       md += `_... and ${aggregated.topP1Findings.length - 5} more P1 issues. See individual reports for details._\n`;
     }
@@ -494,9 +488,11 @@ Total P2 issues: ${aggregated.p2Total}. See individual reports for details.
 ## Recommended Actions
 
 ### Before Merge (Required)
-${verdict === 'FAIL' ? 
-  aggregated.topP0Findings.map((f, i) => `${i + 1}. Fix P0-${i + 1}: ${f.title}`).join('\n') :
-  '1. No blocking issues - ready for merge'}
+${
+  verdict === 'FAIL'
+    ? aggregated.topP0Findings.map((f, i) => `${i + 1}. Fix P0-${i + 1}: ${f.title}`).join('\n')
+    : '1. No blocking issues - ready for merge'
+}
 
 ### Post-Merge (Recommended)
 ${aggregated.p1Total > 0 ? `1. Review and address P1 issues (${aggregated.p1Total} total)` : '1. No P1 issues to address'}
@@ -537,7 +533,7 @@ function generateFinalJson(
   completionStatus: CompletionStatus
 ): FinalResult {
   const diffStats = getDiffStats();
-  
+
   return {
     run_id: run.run_id,
     branch: run.branch,
@@ -550,19 +546,21 @@ function generateFinalJson(
       p2_total: aggregated.p2Total,
       files_changed: diffStats.files,
       lines_added: diffStats.added,
-      lines_removed: diffStats.removed
+      lines_removed: diffStats.removed,
     },
     agents: aggregated.agents,
     statics: aggregated.statics,
     drift: {
       status: run.drift_status || 'UNKNOWN',
-      plan_source: run.plan_path || null
+      plan_source: run.plan_path || null,
     },
     artifacts: {
       context: 'explore/context.md',
       diff: 'explore/diff.md',
-      reports: Object.keys(aggregated.agents).map(a => `_ctx/review_runs/${run.run_id}/reports/reviewer_${a}.md`),
-      final_json: `_ctx/review_runs/${run.run_id}/final.json`
-    }
+      reports: Object.keys(aggregated.agents).map(
+        (a) => `_ctx/review_runs/${run.run_id}/reports/reviewer_${a}.md`
+      ),
+      final_json: `_ctx/review_runs/${run.run_id}/final.json`,
+    },
   } as any; // Type assertion to allow additional fields
 }
