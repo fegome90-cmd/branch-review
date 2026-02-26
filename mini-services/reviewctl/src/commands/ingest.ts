@@ -618,6 +618,8 @@ function parsePytestSummary(content: string): PytestSummary {
   const failed = readMetric('failed');
   const errors = readMetric('error') + readMetric('errors');
   const skipped = readMetric('skipped');
+  const failedMatch = normalized.match(/\b(\d+)\s+failed\b/i);
+  const failedFromText = failedMatch ? Number(failedMatch[1]) : 0;
 
   const coverageThreshold = Number(
     process.env.REVIEWCTL_PYTEST_COVERAGE_THRESHOLD || '80',
@@ -627,7 +629,7 @@ function parsePytestSummary(content: string): PytestSummary {
   const coverageMet =
     coveragePercent === null ? null : coveragePercent >= coverageThreshold;
 
-  if (failed > 0 || errors > 0 || /\bfailed\b/i.test(normalized)) {
+  if (failed > 0 || errors > 0 || failedFromText > 0) {
     return {
       status: 'FAIL',
       passed,
