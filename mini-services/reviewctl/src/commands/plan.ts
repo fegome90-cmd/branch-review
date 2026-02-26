@@ -1,41 +1,41 @@
-import fs from 'fs';
-import path from 'path';
 import chalk from 'chalk';
+import fs from 'fs';
 import ora from 'ora';
-import {
-  REVIEW_RUNS_DIR,
-  ReviewLevel,
-  ReviewType
-} from '../lib/constants.js';
-import {
-  getCurrentRun,
-  getRunDir,
-  validatePreconditions,
-  getDiffStats,
-  getChangedFiles,
-  saveCurrentRun
-} from '../lib/utils.js';
-import {
-  detectStack,
-  detectSensitiveZones,
-  determineThirdAgent,
-  determineReviewType
-} from '../lib/stack-detector.js';
+import path from 'path';
+import { REVIEW_RUNS_DIR, ReviewLevel, ReviewType } from '../lib/constants.js';
 import { resolvePlan, savePlanRef } from '../lib/plan-resolver.js';
+import {
+  detectSensitiveZones,
+  detectStack,
+  determineReviewType,
+  determineThirdAgent,
+} from '../lib/stack-detector.js';
+import {
+  getChangedFiles,
+  getCurrentRun,
+  getDiffStats,
+  getRunDir,
+  saveCurrentRun,
+  validatePreconditions,
+} from '../lib/utils.js';
 
-export async function planCommand(options: { level: string; type: string; planPath?: string }) {
+export async function planCommand(options: {
+  level: string;
+  type: string;
+  planPath?: string;
+}) {
   const spinner = ora('Generating review plan...').start();
-  
+
   try {
     // Validate preconditions
     validatePreconditions(['context', 'diff']);
-    
+
     const run = getCurrentRun();
     if (!run) {
       spinner.fail('No active review run. Run: reviewctl init');
       process.exit(1);
     }
-    
+
     // Resolve plan if not set
     if (run.plan_status !== 'FOUND' || options.planPath) {
       if (options.planPath) {
@@ -49,8 +49,15 @@ export async function planCommand(options: { level: string; type: string; planPa
         saveCurrentRun(run);
       } else {
         const planResult = await resolvePlan();
-        if (planResult.status === 'MISSING' || planResult.status === 'AMBIGUOUS') {
-          spinner.warn(chalk.yellow('Plan is MISSING or AMBIGUOUS. Use --plan-path to specify.'));
+        if (
+          planResult.status === 'MISSING' ||
+          planResult.status === 'AMBIGUOUS'
+        ) {
+          spinner.warn(
+            chalk.yellow(
+              'Plan is MISSING or AMBIGUOUS. Use --plan-path to specify.',
+            ),
+          );
           console.log(chalk.gray('  Continuing with plan-less review...'));
         } else {
           run.plan_path = planResult.path || undefined;
@@ -60,29 +67,33 @@ export async function planCommand(options: { level: string; type: string; planPa
         }
       }
     }
-    
+
     spinner.text = 'Detecting stack and determining review parameters...';
     const stack = await detectStack();
     const changedFiles = getChangedFiles();
     const sensitiveZones = detectSensitiveZones(changedFiles);
     const diffStats = getDiffStats();
-    
+
     // Determine level and type
     let level: ReviewLevel = options.level as ReviewLevel;
     let type: ReviewType = options.type as ReviewType;
-    
+
     if (level === 'auto') {
       level = determineReviewLevel(diffStats, sensitiveZones);
     }
-    
+
     if (type === 'auto') {
-      type = determineReviewType(stack, changedFiles, sensitiveZones) as ReviewType;
+      type = determineReviewType(
+        stack,
+        changedFiles,
+        sensitiveZones,
+      ) as ReviewType;
     }
-    
+
     // Determine agents
     const thirdAgent = determineThirdAgent(stack, sensitiveZones);
     const agents = ['code-reviewer', 'code-simplifier', thirdAgent];
-    
+
     // Generate plan
     spinner.text = 'Generating review plan...';
     const planContent = generatePlanMd(
@@ -93,45 +104,51 @@ export async function planCommand(options: { level: string; type: string; planPa
       stack,
       sensitiveZones,
       diffStats,
-      changedFiles
+      changedFiles,
     );
-    
+
     // Save plan
     const runDir = getRunDir(run.run_id);
     const planPath = path.join(runDir, 'plan.md');
     fs.writeFileSync(planPath, planContent);
-    
+
     // Generate plan.json with required_agents and statics
     const planJson = generatePlanJson(run, level, type, agents, stack);
-    fs.writeFileSync(path.join(runDir, 'plan.json'), JSON.stringify(planJson, null, 2));
-    
+    fs.writeFileSync(
+      path.join(runDir, 'plan.json'),
+      JSON.stringify(planJson, null, 2),
+    );
+
     // Update run status
     run.status = 'planning';
     saveCurrentRun(run);
-    
+
     spinner.succeed(chalk.green('Review plan generated'));
-    
+
     console.log(chalk.gray(`\n  Level: ${level}`));
     console.log(chalk.gray(`  Type: ${type}`));
     console.log(chalk.gray(`  Agents: ${agents.join(', ')}`));
     console.log(chalk.gray(`  Output: _ctx/review_runs/${run.run_id}/plan.md`));
     console.log(chalk.gray(`\n  Next: reviewctl run`));
-    
   } catch (error) {
     spinner.fail(chalk.red('Failed to generate plan'));
-    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+    console.error(
+      chalk.red(error instanceof Error ? error.message : String(error)),
+    );
     process.exit(1);
   }
 }
 
 function determineReviewLevel(
   diffStats: { files: number; added: number; removed: number },
-  zones: Array<{ zone: string; riskLevel: string }>
+  zones: Array<{ zone: string; riskLevel: string }>,
 ): ReviewLevel {
-  const hasHighRisk = zones.some(z => z.riskLevel === 'HIGH');
-  const largeChange = diffStats.files > 20 || diffStats.added + diffStats.removed > 500;
-  const mediumChange = diffStats.files > 5 || diffStats.added + diffStats.removed > 100;
-  
+  const hasHighRisk = zones.some((z) => z.riskLevel === 'HIGH');
+  const largeChange =
+    diffStats.files > 20 || diffStats.added + diffStats.removed > 500;
+  const mediumChange =
+    diffStats.files > 5 || diffStats.added + diffStats.removed > 100;
+
   if (hasHighRisk && largeChange) return 'comprehensive';
   if (hasHighRisk || largeChange) return 'thorough';
   if (mediumChange) return 'thorough';
@@ -146,10 +163,10 @@ function generatePlanMd(
   stack: any,
   zones: any[],
   diffStats: any,
-  changedFiles: string[]
+  changedFiles: string[],
 ): string {
   const timestamp = new Date().toISOString();
-  
+
   return `# Review Plan
 
 ## Run Information
@@ -203,7 +220,7 @@ function generatePlanMd(
 **Mission**: Review code for correctness, patterns, and best practices.
 
 **Focus Areas**:
-${zones.map(z => `- ${z.zone} (${z.riskLevel} risk)`).join('\n')}
+${zones.map((z) => `- ${z.zone} (${z.riskLevel} risk)`).join('\n')}
 
 **Constraints**:
 - Output limit: ≤120 lines
@@ -247,8 +264,8 @@ ${getThirdAgentFocus(agents[2], changedFiles)}
 
 | Tool | Status | Command |
 |------|--------|---------|
-| biome | ${stack.languages.includes('TypeScript') ? 'RUN' : 'SKIP'} | bunx biome check |
-| ruff | ${stack.languages.includes('Python') ? 'RUN' : 'SKIP'} | ruff check . |
+| biome | ${stack.languages.includes('TypeScript') || stack.languages.includes('JavaScript') ? 'RUN' : 'SKIP'} | bun run lint:biome |
+| ruff | ${stack.languages.includes('Python') ? 'RUN' : 'SKIP'} | bun run lint:ruff |
 | pytest | ${stack.languages.includes('Python') ? 'RUN' : 'SKIP'} | pytest -q |
 
 ---
@@ -301,17 +318,25 @@ function getThirdAgentMission(agent: string): string {
 }
 
 function getThirdAgentFocus(agent: string, changedFiles: string[]): string {
-  const testFiles = changedFiles.filter(f => /test|spec/i.test(f));
-  const sqlFiles = changedFiles.filter(f => /\.sql$|schema|migration/i.test(f));
-  const apiFiles = changedFiles.filter(f => /api|route/i.test(f));
-  
+  const testFiles = changedFiles.filter((f) => /test|spec/i.test(f));
+  const sqlFiles = changedFiles.filter((f) =>
+    /\.sql$|schema|migration/i.test(f),
+  );
+  const apiFiles = changedFiles.filter((f) => /api|route/i.test(f));
+
   switch (agent) {
     case 'silent-failure-hunter':
-      return apiFiles.map(f => `- ${f}`).join('\n') || '- No API files detected';
+      return (
+        apiFiles.map((f) => `- ${f}`).join('\n') || '- No API files detected'
+      );
     case 'sql-safety-hunter':
-      return sqlFiles.map(f => `- ${f}`).join('\n') || '- No SQL files detected';
+      return (
+        sqlFiles.map((f) => `- ${f}`).join('\n') || '- No SQL files detected'
+      );
     case 'pr-test-analyzer':
-      return testFiles.map(f => `- ${f}`).join('\n') || '- No test files changed';
+      return (
+        testFiles.map((f) => `- ${f}`).join('\n') || '- No test files changed'
+      );
     default:
       return '- Review all changed files';
   }
@@ -339,11 +364,11 @@ function generatePlanJson(
   level: ReviewLevel,
   type: ReviewType,
   agents: string[],
-  stack: any
+  stack: any,
 ): PlanJson {
   // code-reviewer and code-simplifier are ALWAYS required
   const requiredAgents = ['code-reviewer', 'code-simplifier'];
-  
+
   // Third agent is required for thorough+ levels, optional for quick
   const optionalAgents: string[] = [];
   if (level === 'quick') {
@@ -351,52 +376,55 @@ function generatePlanJson(
   } else {
     requiredAgents.push(agents[2]);
   }
-  
+
   // Statics configuration
   const statics: PlanJson['statics'] = [];
-  
+
   // biome - required for TS/JS projects
-  if (stack.languages.includes('TypeScript') || stack.languages.includes('JavaScript')) {
+  if (
+    stack.languages.includes('TypeScript') ||
+    stack.languages.includes('JavaScript')
+  ) {
     statics.push({
       name: 'biome',
       required: level !== 'quick',
-      reason: 'JS/TS linter and formatter'
+      reason: 'JS/TS linter and formatter',
     });
   } else {
     statics.push({
       name: 'biome',
       required: false,
-      reason: 'Not applicable - no JS/TS detected'
+      reason: 'Not applicable - no JS/TS detected',
     });
   }
-  
+
   // ruff - required for Python projects
   if (stack.languages.includes('Python')) {
     statics.push({
       name: 'ruff',
       required: level !== 'quick',
-      reason: 'Python linter and formatter'
+      reason: 'Python linter and formatter',
     });
   } else {
     statics.push({
       name: 'ruff',
       required: false,
-      reason: 'Not applicable - no Python detected'
+      reason: 'Not applicable - no Python detected',
     });
   }
-  
+
   // pytest - required for Python projects (execution gate)
   if (stack.languages.includes('Python')) {
     statics.push({
       name: 'pytest',
       required: level !== 'quick',
-      reason: 'Python test execution gate'
+      reason: 'Python test execution gate',
     });
   } else {
     statics.push({
       name: 'pytest',
       required: false,
-      reason: 'Not applicable - no Python detected'
+      reason: 'Not applicable - no Python detected',
     });
   }
 
@@ -405,17 +433,17 @@ function generatePlanJson(
     statics.push({
       name: 'pyrefly',
       required: false,
-      reason: 'Python type checker (optional)'
+      reason: 'Python type checker (optional)',
     });
   }
-  
+
   // coderabbit - always optional (AI external review)
   statics.push({
     name: 'coderabbit',
     required: false,
-    reason: 'AI external review (optional)'
+    reason: 'AI external review (optional)',
   });
-  
+
   return {
     run_id: run.run_id,
     level,
@@ -425,6 +453,6 @@ function generatePlanJson(
     statics,
     max_agents: 3,
     timeout_mins: 8,
-    generated_at: new Date().toISOString()
+    generated_at: new Date().toISOString(),
   };
 }

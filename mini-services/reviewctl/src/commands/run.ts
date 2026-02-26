@@ -1,10 +1,20 @@
-import fs from 'fs';
-import path from 'path';
 import chalk from 'chalk';
+import fs from 'fs';
 import ora from 'ora';
-import { REVIEW_RUNS_DIR, MAX_AGENTS, DEFAULT_TIMEOUT_MINS, AgentName } from '../lib/constants.js';
-import { getCurrentRun, getRunDir, validatePreconditions, saveCurrentRun } from '../lib/utils.js';
+import path from 'path';
+import {
+  AgentName,
+  DEFAULT_TIMEOUT_MINS,
+  MAX_AGENTS,
+  REVIEW_RUNS_DIR,
+} from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
+import {
+  getCurrentRun,
+  getRunDir,
+  saveCurrentRun,
+  validatePreconditions,
+} from '../lib/utils.js';
 
 export async function runCommand(options: {
   backend?: string;
@@ -17,11 +27,12 @@ export async function runCommand(options: {
 
   try {
     // Validate preconditions
-    const preconditions: ('review_branch' | 'context' | 'diff' | 'plan_resolved')[] = [
-      'review_branch',
-      'context',
-      'diff',
-    ];
+    const preconditions: (
+      | 'review_branch'
+      | 'context'
+      | 'diff'
+      | 'plan_resolved'
+    )[] = ['review_branch', 'context', 'diff'];
     const skipPlanPrecondition = options.noPlan || options.plan === false;
 
     if (!skipPlanPrecondition) {
@@ -38,12 +49,17 @@ export async function runCommand(options: {
 
     // Check drift status
     if (run.drift_status === 'DRIFT_CONFIRMED') {
-      spinner.fail('DRIFT_CONFIRMED blocks review run. Resolve drift issues first.');
+      spinner.fail(
+        'DRIFT_CONFIRMED blocks review run. Resolve drift issues first.',
+      );
       process.exit(1);
     }
 
     // Parse options
-    const maxAgents = Math.min(parseInt(options.maxAgents) || MAX_AGENTS, MAX_AGENTS);
+    const maxAgents = Math.min(
+      parseInt(options.maxAgents) || MAX_AGENTS,
+      MAX_AGENTS,
+    );
     const timeoutMins = parseInt(options.timeout) || DEFAULT_TIMEOUT_MINS;
 
     // Load plan
@@ -83,17 +99,29 @@ export async function runCommand(options: {
     run.status = 'pending_ingest';
     saveCurrentRun(run);
 
-    spinner.succeed(chalk.green('Review run prepared - handoff requests generated'));
+    spinner.succeed(
+      chalk.green('Review run prepared - handoff requests generated'),
+    );
 
     console.log(chalk.gray(`\n  Agents: ${agents.join(', ')}`));
-    console.log(chalk.gray(`  Requests: _ctx/review_runs/${run.run_id}/reports/REQUEST_*.md`));
-    console.log(chalk.gray(`  Tasks: _ctx/review_runs/${run.run_id}/tasks/*/status.json`));
+    console.log(
+      chalk.gray(
+        `  Requests: _ctx/review_runs/${run.run_id}/reports/REQUEST_*.md`,
+      ),
+    );
+    console.log(
+      chalk.gray(`  Tasks: _ctx/review_runs/${run.run_id}/tasks/*/status.json`),
+    );
     console.log(chalk.yellow(`\n  Next: Run agents externally, then:`));
-    console.log(chalk.yellow(`    reviewctl ingest --agent <name> --input <report.md>`));
+    console.log(
+      chalk.yellow(`    reviewctl ingest --agent <name> --input <report.md>`),
+    );
     console.log(chalk.yellow(`    reviewctl verdict`));
   } catch (error) {
     spinner.fail(chalk.red('Review run failed'));
-    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+    console.error(
+      chalk.red(error instanceof Error ? error.message : String(error)),
+    );
     process.exit(1);
   }
 }
@@ -117,17 +145,24 @@ function parseAgentsFromPlanMarkdown(planPath: string): AgentName[] {
   return normalizeAgents(matches.map((m) => m[1]));
 }
 
-function resolveAgentsForRun(runDir: string, planPath: string, maxAgents: number): AgentName[] {
+function resolveAgentsForRun(
+  runDir: string,
+  planPath: string,
+  maxAgents: number,
+): AgentName[] {
   const planJson = loadPlanJson(runDir);
 
   if (planJson) {
     const required = normalizeAgents(planJson.required_agents || []);
     const optional = normalizeAgents(planJson.optional_agents || []).filter(
-      (a) => !required.includes(a)
+      (a) => !required.includes(a),
     );
 
     const effectiveMax = Math.max(maxAgents, required.length);
-    const combined: AgentName[] = [...required, ...optional].slice(0, effectiveMax);
+    const combined: AgentName[] = [...required, ...optional].slice(
+      0,
+      effectiveMax,
+    );
 
     if (combined.length > 0) {
       return combined;
@@ -139,12 +174,19 @@ function resolveAgentsForRun(runDir: string, planPath: string, maxAgents: number
     return fromMarkdown.slice(0, maxAgents);
   }
 
-  const defaults: AgentName[] = ['code-reviewer', 'code-simplifier', 'pr-test-analyzer'];
+  const defaults: AgentName[] = [
+    'code-reviewer',
+    'code-simplifier',
+    'pr-test-analyzer',
+  ];
   return defaults.slice(0, maxAgents);
 }
 
 // Generate static analysis requests - DO NOT RUN, just create requests
-async function generateStaticsRequests(runId: string, runDir: string): Promise<void> {
+async function generateStaticsRequests(
+  runId: string,
+  runDir: string,
+): Promise<void> {
   const staticsDir = path.join(runDir, 'statics');
   const reportsDir = path.join(runDir, 'reports');
 
@@ -159,11 +201,36 @@ async function generateStaticsRequests(runId: string, runDir: string): Promise<v
   const planJson = loadPlanJson(runDir);
 
   // All possible static tools
-  const staticTools: Array<{ name: string; checkFile: string; command: string; lang: string }> = [
-    { name: 'biome', checkFile: 'biome.json', command: 'bunx biome check .', lang: 'JS/TS' },
-    { name: 'ruff', checkFile: 'ruff.toml', command: 'ruff check .', lang: 'Python' },
-    { name: 'pytest', checkFile: 'pytest.ini', command: 'pytest -q', lang: 'Python' },
-    { name: 'pyrefly', checkFile: 'pyproject.toml', command: 'pyrefly check .', lang: 'Python' },
+  const staticTools: Array<{
+    name: string;
+    checkFile: string;
+    command: string;
+    lang: string;
+  }> = [
+    {
+      name: 'biome',
+      checkFile: 'biome.json',
+      command: 'bun run lint:biome',
+      lang: 'JS/TS',
+    },
+    {
+      name: 'ruff',
+      checkFile: 'ruff.toml',
+      command: 'bun run lint:ruff',
+      lang: 'Python',
+    },
+    {
+      name: 'pytest',
+      checkFile: 'pytest.ini',
+      command: 'pytest -q',
+      lang: 'Python',
+    },
+    {
+      name: 'pyrefly',
+      checkFile: 'pyproject.toml',
+      command: 'pyrefly check .',
+      lang: 'Python',
+    },
     {
       name: 'coderabbit',
       checkFile: '.coderabbit.yaml',
@@ -195,15 +262,23 @@ async function generateStaticsRequests(runId: string, runDir: string): Promise<v
 
     // Check if tool config/capability exists
     const configExists =
-      fs.existsSync(checkPath) || alternateChecks.some((candidate) => fs.existsSync(candidate));
+      fs.existsSync(checkPath) ||
+      alternateChecks.some((candidate) => fs.existsSync(candidate));
 
     // Determine if we should generate a request or skip
     const shouldGenerate = configExists || (planJson && isRequired);
 
     if (shouldGenerate) {
       // Generate request
-      const requestContent = generateStaticsRequestMd(tool, isRequired, planReason);
-      fs.writeFileSync(path.join(reportsDir, `REQUEST_statics_${tool.name}.md`), requestContent);
+      const requestContent = generateStaticsRequestMd(
+        tool,
+        isRequired,
+        planReason,
+      );
+      fs.writeFileSync(
+        path.join(reportsDir, `REQUEST_statics_${tool.name}.md`),
+        requestContent,
+      );
 
       // Mark as PENDING
       const statusPath = path.join(staticsDir, `${tool.name}_status.json`);
@@ -219,8 +294,8 @@ async function generateStaticsRequests(runId: string, runDir: string): Promise<v
             command: tool.command,
           },
           null,
-          2
-        )
+          2,
+        ),
       );
 
       requestedTools.push(tool.name);
@@ -228,20 +303,22 @@ async function generateStaticsRequests(runId: string, runDir: string): Promise<v
       // SKIP - not in plan or no config
       fs.writeFileSync(
         path.join(staticsDir, `${tool.name}.md`),
-        `# ${tool.name} Analysis\n\nSKIPPED: ${configExists ? 'Not in plan' : tool.checkFile + ' not found'}`
+        `# ${tool.name} Analysis\n\nSKIP: ${configExists ? 'Not in plan' : tool.checkFile + ' not found'}`,
       );
       fs.writeFileSync(
         path.join(staticsDir, `${tool.name}_status.json`),
         JSON.stringify(
           {
             tool: tool.name,
-            status: 'SKIPPED',
+            status: 'SKIP',
             required: false,
-            reason: configExists ? 'Not in plan' : `${tool.checkFile} not found`,
+            reason: configExists
+              ? 'Not in plan'
+              : `${tool.checkFile} not found`,
           },
           null,
-          2
-        )
+          2,
+        ),
       );
       skippedTools.push(tool.name);
     }
@@ -261,11 +338,11 @@ Execute each tool and ingest the output:
 
 \`\`\`bash
 # Example for biome
-bunx biome check . > /tmp/biome-output.md
+bun run lint:biome > /tmp/biome-output.md
 reviewctl ingest --static biome --input /tmp/biome-output.md
 
 # Example for ruff
-ruff check . > /tmp/ruff-output.md
+bun run lint:ruff > /tmp/ruff-output.md
 reviewctl ingest --static ruff --input /tmp/ruff-output.md
 
 # Example for pytest
@@ -277,22 +354,25 @@ reviewctl ingest --static pytest --input /tmp/pytest-output.md
 
 Each tool has a status file in \`statics/<tool>_status.json\`:
 - PENDING: Awaiting execution
-- DONE: Output ingested
-- FAILED: Execution report indicates test/tool failure
+- PASS: Tool executed without blocking findings
+- FAIL: Tool execution found blocking issues
 - UNKNOWN: Output ingested but parser could not determine conclusive status
-- SKIPPED: Config/capability not found
+- SKIP: Not applicable for current stack/config
 
 ---
 _Generated by reviewctl_
 `;
-    fs.writeFileSync(path.join(reportsDir, 'REQUEST_statics.md'), combinedRequest);
+    fs.writeFileSync(
+      path.join(reportsDir, 'REQUEST_statics.md'),
+      combinedRequest,
+    );
   }
 }
 
 function generateStaticsRequestMd(
   tool: { name: string; command: string; lang: string },
   isRequired: boolean,
-  planReason: string
+  planReason: string,
 ): string {
   const executionHint =
     tool.name === 'pytest'
@@ -340,7 +420,11 @@ _Generated by reviewctl_
 }
 
 // Generate agent handoff requests - NO SIMULATION
-function generateAgentRequests(agents: AgentName[], run: any, runDir: string): void {
+function generateAgentRequests(
+  agents: AgentName[],
+  run: any,
+  runDir: string,
+): void {
   const reportsDir = path.join(runDir, 'reports');
   const tasksDir = path.join(runDir, 'tasks');
 
@@ -360,7 +444,10 @@ function generateAgentRequests(agents: AgentName[], run: any, runDir: string): v
 
     // Generate handoff request
     const requestContent = generateAgentRequestMd(agent, run);
-    fs.writeFileSync(path.join(reportsDir, `REQUEST_${agent}.md`), requestContent);
+    fs.writeFileSync(
+      path.join(reportsDir, `REQUEST_${agent}.md`),
+      requestContent,
+    );
 
     // Write status = PENDING
     const statusPath = path.join(agentTaskDir, 'status.json');
@@ -374,8 +461,8 @@ function generateAgentRequests(agents: AgentName[], run: any, runDir: string): v
           run_id: run.run_id,
         },
         null,
-        2
-      )
+        2,
+      ),
     );
 
     // Write prompt for external agent to use
@@ -485,7 +572,8 @@ function getAgentMission(agent: AgentName): string {
       'Identify silent failures, swallowed exceptions, and error handling issues that could hide bugs.',
     'sql-safety-hunter':
       'Identify SQL injection risks, unsafe queries, and database safety issues.',
-    'pr-test-analyzer': 'Verify test coverage for changed code and analyze PR quality.',
+    'pr-test-analyzer':
+      'Verify test coverage for changed code and analyze PR quality.',
   };
   return missions[agent];
 }
