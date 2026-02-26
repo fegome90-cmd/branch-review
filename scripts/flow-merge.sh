@@ -25,10 +25,24 @@ fi
 gh auth status >/dev/null
 
 echo "▶ flow:merge: verifying required checks"
-if ! gh pr checks "$PR_REF" --required >/dev/null; then
-  echo "❌ flow:merge: required checks are not passing yet"
-  echo "Run: gh pr checks $PR_REF --watch"
-  exit 1
+set +e
+REQUIRED_OUTPUT=$(gh pr checks "$PR_REF" --required 2>&1)
+REQUIRED_STATUS=$?
+set -e
+
+if [[ $REQUIRED_STATUS -ne 0 ]]; then
+  if echo "$REQUIRED_OUTPUT" | grep -q "no required checks reported"; then
+    echo "ℹ flow:merge: no required checks configured, validating all checks"
+    if ! gh pr checks "$PR_REF" >/dev/null; then
+      echo "❌ flow:merge: checks are not passing yet"
+      echo "Run: gh pr checks $PR_REF --watch"
+      exit 1
+    fi
+  else
+    echo "❌ flow:merge: required checks are not passing yet"
+    echo "Run: gh pr checks $PR_REF --watch"
+    exit 1
+  fi
 fi
 
 echo "▶ flow:merge: merging PR ($MERGE_MODE)"
