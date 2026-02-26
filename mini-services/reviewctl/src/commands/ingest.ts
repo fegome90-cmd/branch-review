@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import fs from 'fs';
 import ora from 'ora';
 import path from 'path';
-import { AGENT_NAMES, type AgentName } from '../lib/constants.js';
+import { AGENT_NAMES, AgentName } from '../lib/constants.js';
 import {
   computeHash,
   isValidName,
@@ -208,7 +208,7 @@ async function ingestAgentReport(
   }
 
   // Determine status based on validation
-  const statusValue = validation.valid ? 'PASS' : 'FAIL';
+  const statusValue = validation.valid ? 'DONE' : 'INVALID';
 
   // Write status.json with hash and metadata
   const statusPath = path.join(agentTaskDir, 'status.json');
@@ -244,7 +244,9 @@ async function ingestAgentReport(
 
   // Show result
   if (!validation.valid) {
-    spinner.warn(chalk.yellow(`Report ingested but FAIL: ${sanitizedAgent}`));
+    spinner.warn(
+      chalk.yellow(`Report ingested but INVALID: ${sanitizedAgent}`),
+    );
     console.log(chalk.red('\n  Contract violations:'));
     for (const err of validation.errors) {
       console.log(chalk.red(`    - ${err}`));
@@ -408,9 +410,24 @@ function readStdin(): Promise<string> {
 
     process.stdin.setEncoding('utf-8');
 
-    const timeoutId = setTimeout(() => {
-      if (!firstChunkReceived && data.length === 0) {
-        cleanup();
+    process.stdin.on('readable', () => {
+      let chunk;
+      while ((chunk = process.stdin.read()) !== null) {
+        data += chunk;
+      }
+    });
+
+    process.stdin.on('end', () => {
+      resolve(data);
+    });
+
+    process.stdin.on('error', (err) => {
+      reject(err);
+    });
+
+    // Timeout if no input
+    setTimeout(() => {
+      if (data.length === 0) {
         reject(new Error('No input received from stdin after 5 seconds'));
       }
     }, 5000);
@@ -711,7 +728,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 
   // Extract P0 findings
   const p0Matches = content.match(
-    /(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:-]?\s*([^\n]+)/gi,
+    /(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
   );
   if (p0Matches) {
     result.findings.push(
@@ -719,7 +736,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
         id: `P0-${i + 1}`,
         priority: 'P0',
         title: m
-          .replace(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:-]?\s*/, '')
+          .replace(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*/, '')
           .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',
@@ -730,7 +747,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 
   // Extract P1 findings
   const p1Matches = content.match(
-    /(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:-]?\s*([^\n]+)/gi,
+    /(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
   );
   if (p1Matches) {
     result.findings.push(
@@ -738,7 +755,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
         id: `P1-${i + 1}`,
         priority: 'P1',
         title: m
-          .replace(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:-]?\s*/, '')
+          .replace(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*/, '')
           .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',
@@ -749,7 +766,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 
   // Extract P2 findings
   const p2Matches = content.match(
-    /(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:-]?\s*([^\n]+)/gi,
+    /(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
   );
   if (p2Matches) {
     result.findings.push(
@@ -757,7 +774,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
         id: `P2-${i + 1}`,
         priority: 'P2',
         title: m
-          .replace(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:-]?\s*/, '')
+          .replace(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*/, '')
           .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',
@@ -791,22 +808,6 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
   return result;
 }
 
-function normalizeAgentReviewStatus(
-  rawStatus: unknown,
-): 'PASS' | 'FAIL' | 'PENDING' {
-  const normalized = String(rawStatus || '').toUpperCase();
-
-  if (normalized === 'PASS' || normalized === 'DONE') {
-    return 'PASS';
-  }
-
-  if (normalized === 'FAIL' || normalized === 'INVALID') {
-    return 'FAIL';
-  }
-
-  return 'PENDING';
-}
-
 function checkCompletionStatus(
   runId: string,
   runDir: string,
@@ -838,9 +839,8 @@ function checkCompletionStatus(
 
     try {
       const status = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
-      const normalizedStatus = normalizeAgentReviewStatus(status.status);
 
-      if (normalizedStatus === 'PASS' && status.validation?.valid) {
+      if (status.status === 'DONE' && status.validation?.valid) {
         completed++;
       } else if (
         normalizedStatus === 'FAIL' ||
