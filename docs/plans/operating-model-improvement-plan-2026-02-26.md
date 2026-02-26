@@ -137,6 +137,15 @@ Institucionalizar un flujo operativo confiable para cambios técnicos (plan -> e
 3. Fase 2
 4. Fase 4
 
+## Responsables por fase
+
+| Fase | Responsable | Salida mínima esperada |
+|---|---|---|
+| Fase 1 | Maintainer de documentación | Reglas y plantillas publicadas + links en README |
+| Fase 2 | Maintainer de tooling/scripts | Scripts de flujo y guardrails activos |
+| Fase 3 | Maintainer de build/typecheck | Comandos por scope definidos y documentados |
+| Fase 4 | Owner de adopción del equipo | DoD aplicado + smoke flow registrado |
+
 ## Indicadores de éxito por fase (medibles)
 
 - **Fase 1:** 3 documentos creados + README referenciando flujo.
@@ -150,6 +159,14 @@ Institucionalizar un flujo operativo confiable para cambios técnicos (plan -> e
 - [ ] Errores distinguen causa: configuración, validación, estado stale o permisos.
 - [ ] Eventos clave de flujo (prepr, prepush, merge) quedan trazables en logs/CI.
 - [ ] No exponer secretos en logs ni en salida de hooks.
+- [ ] Toda condición `UNKNOWN`/`SKIPPED` incluye razón explícita para evitar silent failures.
+
+## Mapeo de estado lógico del flujo
+
+- `PASS` -> exit code `0`.
+- `FAILED_VALIDATION` -> exit code `2` (input/estado inválido).
+- `FAILED_EXECUTION` -> exit code `1` (error interno/script).
+- `SKIPPED`/`UNKNOWN` -> exit code `0` con mensaje explícito y condición trazable.
 
 ## Baseline de testing por ruta crítica del flujo
 
