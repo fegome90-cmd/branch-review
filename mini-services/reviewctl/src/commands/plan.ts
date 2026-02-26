@@ -265,7 +265,7 @@ ${getThirdAgentFocus(agents[2], changedFiles)}
 | Tool | Status | Command |
 |------|--------|---------|
 | biome | ${stack.languages.includes('TypeScript') || stack.languages.includes('JavaScript') ? 'RUN' : 'SKIP'} | bun run lint:biome |
-| ruff | ${stack.languages.includes('Python') ? 'RUN' : 'SKIP'} | ruff check . |
+| ruff | ${stack.languages.includes('Python') ? 'RUN' : 'SKIP'} | bun run lint:ruff |
 | pytest | ${stack.languages.includes('Python') ? 'RUN' : 'SKIP'} | pytest -q |
 
 ---

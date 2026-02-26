@@ -216,7 +216,7 @@ async function generateStaticsRequests(
     {
       name: 'ruff',
       checkFile: 'ruff.toml',
-      command: 'ruff check .',
+      command: 'bun run lint:ruff',
       lang: 'Python',
     },
     {
@@ -342,7 +342,7 @@ bun run lint:biome > /tmp/biome-output.md
 reviewctl ingest --static biome --input /tmp/biome-output.md
 
 # Example for ruff
-ruff check . > /tmp/ruff-output.md
+bun run lint:ruff > /tmp/ruff-output.md
 reviewctl ingest --static ruff --input /tmp/ruff-output.md
 
 # Example for pytest
