@@ -49,7 +49,7 @@ jobs:
 
       - name: Biome check changed JS/TS files
         shell: bash
-        run: BR_DIFF_RANGE="origin/${{ github.base_ref }}...HEAD" bash scripts/run-biome-check.sh
+        run: BR_BIOME_SINCE="origin/${{ github.base_ref }}" bash scripts/run-biome-check.sh
 
       - name: Ruff check changed Python files
         shell: bash
