@@ -76,7 +76,7 @@ export async function planCommand(options: { level: string; type: string; planPa
     }
     
     if (type === 'auto') {
-      type = determineReviewType(stack) as ReviewType;
+      type = determineReviewType(stack, changedFiles, sensitiveZones) as ReviewType;
     }
     
     // Determine agents

@@ -37,7 +37,7 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
     
     // Check for missing reports
     spinner.text = 'Checking report completion status...';
-    const completionStatus = checkCompletionStatus(reportsDir, tasksDir);
+    const completionStatus = checkCompletionStatus(runDir, reportsDir, tasksDir);
     
     // Check for INVALID reports (higher priority than missing)
     if (completionStatus.invalid.length > 0 && !options.allowIncomplete) {
@@ -166,40 +166,55 @@ interface CompletionStatus {
   invalidDetails: Record<string, string[]>;
 }
 
-function checkCompletionStatus(reportsDir: string, tasksDir: string): CompletionStatus {
-  // Find all REQUEST files for agents (not statics)
-  const files = fs.readdirSync(reportsDir);
-  const requestFiles = files.filter(f => 
-    f.startsWith('REQUEST_') && 
-    f.endsWith('.md') && 
-    !f.includes('statics')
-  );
-  
-  const requiredAgents = requestFiles.map(f => 
-    f.replace('REQUEST_', '').replace('.md', '')
-  );
-  
+interface PlanJson {
+  required_agents: string[];
+  optional_agents: string[];
+}
+
+function loadPlanJson(runDir: string): PlanJson | null {
+  const planJsonPath = path.join(runDir, 'plan.json');
+  if (!fs.existsSync(planJsonPath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(planJsonPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function checkCompletionStatus(runDir: string, reportsDir: string, tasksDir: string): CompletionStatus {
+  const planJson = loadPlanJson(runDir);
+
+  // Source of truth: plan.json required agents; fallback to REQUEST files.
+  const requiredAgents = planJson?.required_agents?.length
+    ? planJson.required_agents
+    : fs
+        .readdirSync(reportsDir)
+        .filter((f) => f.startsWith('REQUEST_') && f.endsWith('.md') && !f.includes('statics'))
+        .map((f) => f.replace('REQUEST_', '').replace('.md', ''));
+
   const missing: string[] = [];
   const invalid: string[] = [];
   const invalidDetails: Record<string, string[]> = {};
   let completed = 0;
-  
+
   for (const agent of requiredAgents) {
     const reportPath = path.join(reportsDir, `reviewer_${agent}.md`);
     const statusPath = path.join(tasksDir, agent, 'status.json');
-    
+
     const hasReport = fs.existsSync(reportPath);
     const statusPathExists = fs.existsSync(statusPath);
-    
+
     if (!hasReport && !statusPathExists) {
       missing.push(agent);
       continue;
     }
-    
+
     if (statusPathExists) {
       try {
         const statusJson = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
-        
+
         if (statusJson.status === 'DONE' && statusJson.validation?.valid) {
           completed++;
         } else if (statusJson.status === 'INVALID' || (statusJson.validation && !statusJson.validation.valid)) {
@@ -215,7 +230,7 @@ function checkCompletionStatus(reportsDir: string, tasksDir: string): Completion
       missing.push(agent);
     }
   }
-  
+
   return {
     required: requiredAgents,
     completed,

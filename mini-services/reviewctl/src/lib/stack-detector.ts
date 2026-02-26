@@ -162,11 +162,24 @@ export function determineThirdAgent(stack: StackInfo, sensitiveZones: SensitiveZ
   return 'pr-test-analyzer';
 }
 
-// Determine review type from stack
-export function determineReviewType(stack: StackInfo): string {
-  const hasPython = stack.languages.includes('Python');
-  const hasSql = stack.languages.includes('SQL') || stack.databases.includes('Prisma');
-  
+// Determine review type from stack and changed files
+export function determineReviewType(
+  stack: StackInfo,
+  changedFiles: string[] = [],
+  sensitiveZones: SensitiveZone[] = []
+): string {
+  const hasPythonInStack = stack.languages.includes('Python');
+
+  const hasPythonChanges = changedFiles.some((f) => /\.py$/i.test(f));
+  const hasSqlFileChanges = changedFiles.some((f) => /\.sql$/i.test(f));
+  const hasSchemaOrMigrationChanges = changedFiles.some((f) =>
+    /schema\.prisma|migration/i.test(f)
+  );
+  const hasDbSensitiveZone = sensitiveZones.some((z) => z.zone === 'Database/Schema');
+
+  const hasPython = hasPythonInStack && (hasPythonChanges || changedFiles.length === 0);
+  const hasSql = hasSqlFileChanges || hasSchemaOrMigrationChanges || hasDbSensitiveZone;
+
   if (hasPython && hasSql) return 'python+sql';
   if (hasPython) return 'python';
   if (hasSql) return 'sql';

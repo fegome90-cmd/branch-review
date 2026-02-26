@@ -14,24 +14,25 @@ import {
   validatePreconditions,
   saveCurrentRun
 } from '../lib/utils.js';
-import { readFileSync } from 'fs';
 
 export async function runCommand(options: {
-  backend: string;
+  backend?: string;
   maxAgents: string;
   timeout: string;
-  noPlan: boolean;
+  noPlan?: boolean;
+  plan?: boolean;
 }) {
   const spinner = ora('Starting review run...').start();
   
   try {
     // Validate preconditions
-    const preconditions: ('review_branch' | 'context' | 'diff')[] = ['review_branch', 'context', 'diff'];
-    
-    if (!options.noPlan) {
+    const preconditions: ('review_branch' | 'context' | 'diff' | 'plan_resolved')[] = ['review_branch', 'context', 'diff'];
+    const skipPlanPrecondition = options.noPlan || options.plan === false;
+
+    if (!skipPlanPrecondition) {
       preconditions.push('plan_resolved');
     }
-    
+
     validatePreconditions(preconditions);
     
     const run = getCurrentRun();
@@ -53,8 +54,9 @@ export async function runCommand(options: {
     // Load plan
     const runDir = getRunDir(run.run_id);
     const planPath = path.join(runDir, 'plan.md');
-    
-    if (!fs.existsSync(planPath)) {
+    const hasPlan = fs.existsSync(planPath);
+
+    if (!hasPlan && !skipPlanPrecondition) {
       spinner.fail('Review plan not found. Run: reviewctl plan');
       process.exit(1);
     }
@@ -63,10 +65,15 @@ export async function runCommand(options: {
     run.status = 'running';
     saveCurrentRun(run);
     
-    // Parse agents from plan
-    const agents = parseAgentsFromPlan(planPath);
+    // Parse agents from plan (plan.json is source of truth). If no plan and --no-plan, use safe defaults.
+    const agents = hasPlan
+      ? resolveAgentsForRun(runDir, planPath, maxAgents)
+      : (['code-reviewer', 'code-simplifier'] as AgentName[]);
     
     spinner.text = `Generating handoff requests for ${agents.length} agents...`;
+    if (!hasPlan) {
+      spinner.text = 'No plan found (--no-plan). Using default agents: code-reviewer, code-simplifier';
+    }
     
     // Generate static analysis requests
     await generateStaticsRequests(run.run_id, runDir);
@@ -94,27 +101,49 @@ export async function runCommand(options: {
   }
 }
 
-function parseAgentsFromPlan(planPath: string): AgentName[] {
-  const content = readFileSync(planPath, 'utf-8');
-  const agents: AgentName[] = [];
-  
-  // Extract agents from plan
-  const agentMatches = content.match(/### Agent: (\w+-?\w*)/g);
-  if (agentMatches) {
-    for (const match of agentMatches) {
-      const agent = match.replace('### Agent: ', '') as AgentName;
-      if (['code-reviewer', 'code-simplifier', 'silent-failure-hunter', 'sql-safety-hunter', 'pr-test-analyzer'].includes(agent)) {
-        agents.push(agent);
-      }
+const VALID_AGENTS = new Set<AgentName>([
+  'code-reviewer',
+  'code-simplifier',
+  'silent-failure-hunter',
+  'sql-safety-hunter',
+  'pr-test-analyzer'
+]);
+
+function normalizeAgents(rawAgents: string[]): AgentName[] {
+  const unique = Array.from(new Set(rawAgents));
+  return unique.filter((a): a is AgentName => VALID_AGENTS.has(a as AgentName));
+}
+
+function parseAgentsFromPlanMarkdown(planPath: string): AgentName[] {
+  const content = fs.readFileSync(planPath, 'utf-8');
+  const matches = [...content.matchAll(/###\s*Agent:\s*([a-z0-9-]+)/gi)];
+  return normalizeAgents(matches.map((m) => m[1]));
+}
+
+function resolveAgentsForRun(runDir: string, planPath: string, maxAgents: number): AgentName[] {
+  const planJson = loadPlanJson(runDir);
+
+  if (planJson) {
+    const required = normalizeAgents(planJson.required_agents || []);
+    const optional = normalizeAgents(planJson.optional_agents || []).filter(
+      (a) => !required.includes(a)
+    );
+
+    const effectiveMax = Math.max(maxAgents, required.length);
+    const combined: AgentName[] = [...required, ...optional].slice(0, effectiveMax);
+
+    if (combined.length > 0) {
+      return combined;
     }
   }
-  
-  // Default agents if none found
-  if (agents.length === 0) {
-    agents.push('code-reviewer', 'code-simplifier', 'pr-test-analyzer');
+
+  const fromMarkdown = parseAgentsFromPlanMarkdown(planPath);
+  if (fromMarkdown.length > 0) {
+    return fromMarkdown.slice(0, maxAgents);
   }
-  
-  return agents.slice(0, MAX_AGENTS);
+
+  const defaults: AgentName[] = ['code-reviewer', 'code-simplifier', 'pr-test-analyzer'];
+  return defaults.slice(0, maxAgents);
 }
 
 interface PlanJson {

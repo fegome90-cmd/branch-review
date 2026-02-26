@@ -38,6 +38,7 @@ program
   .description('Generate review plan based on exploration')
   .option('--level <level>', 'Review level: auto|quick|thorough|comprehensive', 'auto')
   .option('--type <type>', 'Review type: auto|python|sql|general|python+sql', 'auto')
+  .option('--plan-path <path>', 'Explicit plan path to use as SSOT')
   .action(planCommand);
 
 // Run command - generates handoff requests, NO SIMULATION

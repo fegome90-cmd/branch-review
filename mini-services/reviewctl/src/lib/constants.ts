@@ -45,7 +45,7 @@ export type Priority = 'P0' | 'P1' | 'P2';
 export type Verdict = 'PASS' | 'FAIL';
 
 // Run status
-export type RunStatus = 'pending' | 'exploring' | 'planning' | 'running' | 'verdict' | 'completed' | 'failed';
+export type RunStatus = 'pending' | 'exploring' | 'planning' | 'running' | 'pending_ingest' | 'verdict' | 'completed' | 'failed';
 
 // Interfaces
 export interface RunMetadata {
