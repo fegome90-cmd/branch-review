@@ -20,7 +20,7 @@ import {
 } from '../lib/contract-validator.js';
 
 // Static tools configuration
-const STATIC_TOOLS = ['biome', 'ruff', 'pyrefly', 'coderabbit'];
+const STATIC_TOOLS = ['biome', 'ruff', 'pyrefly', 'pytest', 'coderabbit'];
 
 export async function ingestCommand(options: {
   agent?: string;
@@ -330,24 +330,42 @@ async function ingestStaticReport(
     isRequired = toolConfig?.required || false;
   }
   
+  const pytestSummary = sanitizedTool === 'pytest' ? parsePytestSummary(content) : null;
+
   // Write status.json
   const statusPath = path.join(staticsDir, `${sanitizedTool}_status.json`);
   const status = {
     tool: sanitizedTool,
-    status: 'DONE',
+    status: pytestSummary?.status || 'DONE',
     required: isRequired,
     completed_at: new Date().toISOString(),
     source_path: sourcePath,
     content_hash: computeHash(content),
-    is_extra: isExtra
+    is_extra: isExtra,
+    execution:
+      pytestSummary === null
+        ? undefined
+        : {
+            passed: pytestSummary.passed,
+            failed: pytestSummary.failed,
+            errors: pytestSummary.errors,
+            skipped: pytestSummary.skipped,
+            coverage_percent: pytestSummary.coveragePercent,
+            coverage_threshold: pytestSummary.coverageThreshold,
+            coverage_met: pytestSummary.coverageMet,
+            reason: pytestSummary.reason,
+          },
   };
   fs.writeFileSync(statusPath, JSON.stringify(status, null, 2));
-  
+
   spinner.succeed(chalk.green(`Static analysis ingested: ${sanitizedTool}`));
   console.log(chalk.gray(`  Report: ${reportPath}`));
-  console.log(chalk.gray(`  Status: DONE`));
+  console.log(chalk.gray(`  Status: ${status.status}`));
   console.log(chalk.gray(`  Required: ${isRequired}`));
   console.log(chalk.gray(`  Hash: ${status.content_hash}`));
+  if (pytestSummary?.reason) {
+    console.log(chalk.gray(`  Pytest parse: ${pytestSummary.reason}`));
+  }
 }
 
 function readStdin(): Promise<string> {
@@ -377,6 +395,96 @@ function readStdin(): Promise<string> {
       }
     }, 5000);
   });
+}
+
+type PytestSummary = {
+  status: 'DONE' | 'FAILED' | 'UNKNOWN';
+  passed: number;
+  failed: number;
+  errors: number;
+  skipped: number;
+  coveragePercent: number | null;
+  coverageThreshold: number;
+  coverageMet: boolean | null;
+  reason: string;
+};
+
+function parsePytestSummary(content: string): PytestSummary {
+  const normalized = content.toLowerCase();
+  const summaryLine =
+    content
+      .split('\n')
+      .reverse()
+      .find((line) => /\b(passed|failed|errors?|skipped|xfailed|xpassed)\b/i.test(line)) || '';
+
+  const readMetric = (name: string): number => {
+    const match = summaryLine.match(new RegExp(`(\\d+)\\s+${name}`, 'i'));
+    return match ? Number(match[1]) : 0;
+  };
+
+  const passed = readMetric('passed');
+  const failed = readMetric('failed');
+  const errors = readMetric('error') + readMetric('errors');
+  const skipped = readMetric('skipped');
+
+  const coverageThreshold = Number(process.env.REVIEWCTL_PYTEST_COVERAGE_THRESHOLD || '80');
+  const coverageMatch = content.match(/TOTAL\s+\d+\s+\d+\s+(\d+)%/i);
+  const coveragePercent = coverageMatch ? Number(coverageMatch[1]) : null;
+  const coverageMet = coveragePercent === null ? null : coveragePercent >= coverageThreshold;
+
+  if (failed > 0 || errors > 0 || /\bfailed\b/i.test(normalized)) {
+    return {
+      status: 'FAILED',
+      passed,
+      failed,
+      errors,
+      skipped,
+      coveragePercent,
+      coverageThreshold,
+      coverageMet,
+      reason: 'Pytest output indicates failing tests',
+    };
+  }
+
+  if (passed > 0 || /\b\d+\s+passed\b/i.test(summaryLine)) {
+    if (coveragePercent !== null && coverageMet === false) {
+      return {
+        status: 'FAILED',
+        passed,
+        failed,
+        errors,
+        skipped,
+        coveragePercent,
+        coverageThreshold,
+        coverageMet,
+        reason: `Coverage below threshold (${coveragePercent}% < ${coverageThreshold}%)`,
+      };
+    }
+
+    return {
+      status: 'DONE',
+      passed,
+      failed,
+      errors,
+      skipped,
+      coveragePercent,
+      coverageThreshold,
+      coverageMet,
+      reason: 'Pytest output parsed successfully',
+    };
+  }
+
+  return {
+    status: 'UNKNOWN',
+    passed,
+    failed,
+    errors,
+    skipped,
+    coveragePercent,
+    coverageThreshold,
+    coverageMet,
+    reason: 'Could not determine pytest result conclusively',
+  };
 }
 
 function parseReport(content: string, agent: AgentName, runId: string): any {

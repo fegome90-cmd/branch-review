@@ -55,7 +55,7 @@ program
   .command('ingest')
   .description('Ingest agent or static analysis output')
   .option('--agent <name>', 'Agent name (code-reviewer, code-simplifier, etc.)')
-  .option('--static <tool>', 'Static tool name (biome, ruff, pyrefly)')
+  .option('--static <tool>', 'Static tool name (biome, ruff, pyrefly, pytest)')
   .option('--input <path>', 'Input file path (reads stdin if not specified)')
   .option('--extra', 'Allow agents/tools not in plan (stored but not counted)')
   .option('--overwrite', 'Overwrite existing report')
