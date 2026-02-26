@@ -91,9 +91,16 @@ Agregar chequeo para evitar reintroducciones de spacing fraccional en utilidades
 - **Compact:** context menus, items secundarios, barras densas.
 
 ### Tabla inicial (target)
-- `input/select/textarea`: baseline común por altura y padding.
-- `button`: `default`, `sm`, `lg` coherentes con escala.
-- `navigation-menu`: alinear con tokens definidos.
+
+| Componente | Densidad | Altura | Padding X | Padding Y | Clases Tailwind |
+|---|---|---|---|---|---|
+| input / select / textarea | compact | 32px | px-2 | py-1 | `h-8 px-2 py-1` |
+| input / select / textarea | default | 40px | px-3 | py-2 | `h-10 px-3 py-2` |
+| input / select / textarea | relaxed | 48px | px-4 | py-3 | `h-12 px-4 py-3` |
+| button | sm | 32px | px-2 | — | `h-8 px-2` |
+| button | default | 36px | px-4 | py-2 | `h-9 px-4 py-2` |
+| button | lg | 40px | px-6 | — | `h-10 px-6` |
+| navigation-menu | default | 48px | px-4 | py-2 | `h-12 gap-x-4 py-2` |
 
 ### DoD Fase 4
 - Tabla de densidad aplicada y consistente en primitives.
@@ -119,12 +126,17 @@ Agregar chequeo para evitar reintroducciones de spacing fraccional en utilidades
 ---
 
 ## Dependencias y orden de merge
-1. PR1 (tokens)
-2. PR2 (spacing)
-3. PR3 (elevación)
-4. PR4 (densidad)
 
-Regla: no abrir PR siguiente sin validar DoD del anterior.
+> **Nota:** El plan original contemplaba cuatro PRs secuenciales (PR1–PR4). Estos han sido consolidados en un único PR. Las fases originales sirven como **checkpoints de validación interna** dentro del PR; el DoD de cada checkpoint debe verificarse antes de dar por cerrado el siguiente.
+
+| Fase original | Checkpoint en este PR | Estado | Contenido |
+|---|---|---|---|
+| PR1 (tokens) | Checkpoint 1 | ✅ | `globals.css` — radius token → 0.5rem, escala derivada |
+| PR2 (spacing) | Checkpoint 2 | ✅ | Fractional spacing eliminado; guardrail `lint:spacing-grid` activo |
+| PR3 (elevación) | Checkpoint 3 | ✅ | Shadow scale reducida en todos los overlays |
+| PR4 (densidad) | Checkpoint 4 | 🔄 | Input/button/select density según tabla target |
+
+La regla original ("no abrir PR siguiente sin validar DoD del anterior") se aplica aquí como: **no cerrar este PR hasta que todos los checkpoints tengan su DoD validado**.
 
 ## Matriz de alcance (resumen)
 - **Tokens:** `src/app/globals.css`

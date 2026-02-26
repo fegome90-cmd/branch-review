@@ -7,7 +7,7 @@
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint . --max-warnings=0",
-    "lint:spacing-grid": "bash -lc 'FILES=$(git diff --name-only main...HEAD | rg \"^src/components/ui/.*\\\\.tsx$\" || true); if [ -z \"$FILES\" ]; then echo \"No changed ui files to validate\"; exit 0; fi; echo \"$FILES\" | xargs rg -n \"\\\\b(p|px|py|gap|space-x|space-y)-(\\\\d+\\\\.5)\\\\b|\\\\bp-\\\\[[0-9]+px\\\\]\" && exit 1 || exit 0'",
+    "lint:spacing-grid": "bash -lc 'FILES=$(git diff --name-only main...HEAD | rg \"^src/components/ui/.*\\\\.tsx$\" || true); if [ -z \"$FILES\" ]; then echo \"No changed ui files to validate\"; exit 0; fi; echo \"$FILES\" | xargs rg -n \"\\\\b(p|px|py|gap|space-x|space-y)-(\\\\d+\\\\.5)\\\\b|\\\\bp-\\\\[[0-9]+px\\\\]\"; RG_EXIT=$?; if [ $RG_EXIT -eq 0 ]; then echo \"Spacing grid violations found above\"; exit 1; elif [ $RG_EXIT -eq 1 ]; then exit 0; else exit $RG_EXIT; fi'",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
