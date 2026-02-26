@@ -3,6 +3,7 @@ set -euo pipefail
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 HEAD_SHA=$(git rev-parse --short HEAD)
+TYPECHECK_SCOPE="${BR_PREPR_TYPECHECK_SCOPE:-app}"
 MARKER_FILE=".git/.pre-pr-ok"
 
 if [[ "$BRANCH" == "main" ]]; then
@@ -16,12 +17,9 @@ bun run lint
 echo "▶ pre-pr: running tests"
 bun test
 
-if [[ -f "tsconfig.app.json" ]]; then
-  echo "▶ pre-pr: running typecheck:app"
-  bun run typecheck:app
-else
-  echo "ℹ pre-pr: skipping typecheck:app (tsconfig.app.json not found)"
-fi
+echo "▶ pre-pr: running typecheck scope '${TYPECHECK_SCOPE}'"
+echo "ℹ pre-pr: set BR_PREPR_TYPECHECK_SCOPE=app|mini-services|all|none to override"
+bash scripts/run-typecheck-scope.sh "$TYPECHECK_SCOPE"
 
-echo "${BRANCH}:${HEAD_SHA}:$(date -u +%FT%TZ)" > "$MARKER_FILE"
-echo "✅ pre-pr: checks passed for ${BRANCH}@${HEAD_SHA}"
+echo "${BRANCH}:${HEAD_SHA}:${TYPECHECK_SCOPE}:$(date -u +%FT%TZ)" > "$MARKER_FILE"
+echo "✅ pre-pr: checks passed for ${BRANCH}@${HEAD_SHA} (scope=${TYPECHECK_SCOPE})"
