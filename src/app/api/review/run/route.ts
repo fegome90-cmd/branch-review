@@ -1,18 +1,11 @@
-import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { jsonFail, jsonOk } from '@/lib/http';
+import { readCurrentRun } from '@/lib/review-runs';
 
 export async function GET() {
   try {
-    const runPath = path.join(process.cwd(), '_ctx', 'review_runs', 'current.json');
-    
-    if (!fs.existsSync(runPath)) {
-      return NextResponse.json({ run: null });
-    }
-    
-    const runData = JSON.parse(fs.readFileSync(runPath, 'utf-8'));
-    return NextResponse.json({ run: runData });
-  } catch (error) {
-    return NextResponse.json({ run: null, error: 'Failed to read run data' });
+    const runData = await readCurrentRun();
+    return jsonOk({ run: runData });
+  } catch {
+    return jsonFail('Failed to read run data', 500, { code: 'INTERNAL_ERROR' });
   }
 }
