@@ -7,6 +7,7 @@
 branch-review coordinates code review agents and static analysis tools into a unified workflow. Run reviews from the CLI with `reviewctl`, or manage them visually through the web dashboard.
 
 **Two interfaces:**
+
 - **reviewctl CLI** - Orchestrate reviews from terminal
 - **Web Dashboard** - Visual review management at localhost:3000
 
@@ -18,6 +19,7 @@ branch-review coordinates code review agents and static analysis tools into a un
 - Plan-based reviews with drift detection
 - Priority findings: P0 (blocking), P1 (important), P2 (minor)
 - Real-time dashboard with verdict visualization
+- Post-PR learning hook that extracts reusable decision skills into `skills/learned/`
 
 ## Quick Start
 
@@ -27,19 +29,29 @@ bun run dev           # Start dashboard at localhost:3000
 bun reviewctl help    # Show CLI commands
 ```
 
+## Quality Checks
+
+```bash
+bun run lint                                                # ESLint repo gate
+BR_BIOME_SINCE=origin/main bash scripts/run-biome-check.sh # Biome CLI on changed JS/TS/JSON
+BR_DIFF_RANGE=origin/main...HEAD bash scripts/run-ruff-check.sh # Ruff on changed Python files
+```
+
+`run-biome-check.sh` uses Biome CLI (`biome check --changed --since=<ref>`) and validates the `--since` ref before execution.
+
 ## CLI Commands
 
-| Command | Purpose |
-|---------|---------|
-| `init` | Create review run on review/* branch |
-| `explore context` | Gather repository context |
-| `explore diff` | Analyze branch changes |
-| `plan` | Generate review plan |
-| `run` | Create handoff requests for agents |
-| `ingest --agent <name>` | Capture agent output |
-| `verdict` | Generate final PASS/FAIL verdict |
-| `merge` | Merge branch after PASS |
-| `cleanup` | Remove run artifacts |
+| Command                 | Purpose                               |
+| ----------------------- | ------------------------------------- |
+| `init`                  | Create review run on review/\* branch |
+| `explore context`       | Gather repository context             |
+| `explore diff`          | Analyze branch changes                |
+| `plan`                  | Generate review plan                  |
+| `run`                   | Create handoff requests for agents    |
+| `ingest --agent <name>` | Capture agent output                  |
+| `verdict`               | Generate final PASS/FAIL verdict      |
+| `merge`                 | Merge branch after PASS               |
+| `cleanup`               | Remove run artifacts                  |
 
 ## Workflow
 
@@ -49,26 +61,26 @@ init → explore context → explore diff → plan → run → ingest → verdic
 
 ## API Endpoints
 
-| Method | Endpoint | Returns |
-|--------|----------|---------|
-| GET | /api/review/run | Current run status |
-| POST | /api/review/command | Execute reviewctl command |
-| GET | /api/review/final | Final verdict JSON |
-| GET | /api/review/state | Run state snapshot |
+| Method | Endpoint            | Returns                   |
+| ------ | ------------------- | ------------------------- |
+| GET    | /api/review/run     | Current run status        |
+| POST   | /api/review/command | Execute reviewctl command |
+| GET    | /api/review/final   | Final verdict JSON        |
+| GET    | /api/review/state   | Run state snapshot        |
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Runtime | Bun |
-| Framework | Next.js 16 (App Router) |
-| Language | TypeScript 5 |
-| Styling | Tailwind CSS 4 + shadcn/ui |
-| State | Zustand + TanStack Query |
-| CLI | Commander + Chalk |
-| Database | Prisma |
-| Auth | NextAuth.js |
-| Validation | Zod + React Hook Form |
+| Layer      | Technology                 |
+| ---------- | -------------------------- |
+| Runtime    | Bun                        |
+| Framework  | Next.js 16 (App Router)    |
+| Language   | TypeScript 5               |
+| Styling    | Tailwind CSS 4 + shadcn/ui |
+| State      | Zustand + TanStack Query   |
+| CLI        | Commander + Chalk          |
+| Database   | Prisma                     |
+| Auth       | NextAuth.js                |
+| Validation | Zod + React Hook Form      |
 
 ## Project Structure
 
