@@ -16,6 +16,8 @@
     "format:check": "prettier . --check",
     "typecheck": "tsc --noEmit",
     "typecheck:app": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck:mini-services": "tsc --noEmit -p tsconfig.mini-services.json",
+    "typecheck:all": "bun run typecheck:app && bun run typecheck:mini-services",
     "test": "bun test",
     "flow:commit": "bash scripts/git-flow-commit.sh",
     "flow:prepr": "bash scripts/run-pre-pr.sh",

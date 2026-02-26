@@ -27,9 +27,20 @@ Minimum gate before opening/merging PR:
 
 - `bun run lint`
 - `bun test`
-- `bun run typecheck:app` (when available)
+- `bun run flow:prepr` (defaults to `app` typecheck scope)
 
-If scope includes mini-services, run additional checks explicitly.
+Typecheck scopes:
+
+- `bun run typecheck:app` → app/API/frontend scope.
+- `bun run typecheck:mini-services` → `mini-services/reviewctl` scope.
+- `bun run typecheck:all` → app + mini-services.
+
+Pre-PR scope override:
+
+- `BR_PREPR_TYPECHECK_SCOPE=app bun run flow:prepr`
+- `BR_PREPR_TYPECHECK_SCOPE=mini-services bun run flow:prepr`
+- `BR_PREPR_TYPECHECK_SCOPE=all bun run flow:prepr`
+- `BR_PREPR_TYPECHECK_SCOPE=none bun run flow:prepr` (explicit skip with trace)
 
 ## 4) Artifacts and guardrails
 

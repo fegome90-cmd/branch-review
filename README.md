@@ -98,9 +98,12 @@ On install, `husky` configures the Git hook and each commit runs `lint-staged`:
 
 ```bash
 bun run lint
-bun run typecheck
+bun run typecheck:app
+bun run typecheck:all
 bun run format:check
 ```
+
+Typecheck scopes are documented in `docs/typecheck-scopes.md`.
 
 ### Pull Requests
 
