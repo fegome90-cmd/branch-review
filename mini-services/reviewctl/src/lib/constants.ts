@@ -30,13 +30,13 @@ export type PlanStatus = 'FOUND' | 'MISSING' | 'AMBIGUOUS';
 // Agent names
 export const AGENT_NAMES = [
   'code-reviewer',
-  'code-simplifier', 
+  'code-simplifier',
   'silent-failure-hunter',
   'sql-safety-hunter',
-  'pr-test-analyzer'
+  'pr-test-analyzer',
 ] as const;
 
-export type AgentName = typeof AGENT_NAMES[number];
+export type AgentName = (typeof AGENT_NAMES)[number];
 
 // Priority levels
 export type Priority = 'P0' | 'P1' | 'P2';
@@ -45,7 +45,15 @@ export type Priority = 'P0' | 'P1' | 'P2';
 export type Verdict = 'PASS' | 'FAIL';
 
 // Run status
-export type RunStatus = 'pending' | 'exploring' | 'planning' | 'running' | 'pending_ingest' | 'verdict' | 'completed' | 'failed';
+export type RunStatus =
+  | 'pending'
+  | 'exploring'
+  | 'planning'
+  | 'running'
+  | 'pending_ingest'
+  | 'verdict'
+  | 'completed'
+  | 'failed';
 
 // Interfaces
 export interface RunMetadata {
@@ -109,8 +117,17 @@ export interface FinalResult {
     lines_added: number;
     lines_removed: number;
   };
-  agents: Record<string, { p0: number; p1: number; p2: number; status: string }>;
+  agents: Record<
+    string,
+    { p0: number; p1: number; p2: number; status: string }
+  >;
   statics: Record<string, { issues: number; status: string }>;
+  static_gate: {
+    required: Array<{ status: string }>;
+    blocking: Array<{ status: string }>;
+    passed: number;
+    total: number;
+  };
   drift: {
     status: DriftStatus;
     plan_source: string | null;
@@ -125,11 +142,15 @@ export interface FinalResult {
 
 // Precondition errors
 export const PRECONDITION_ERRORS = {
-  NOT_REVIEW_BRANCH: 'Not on review/* branch. Create or switch to a review branch first.',
-  MISSING_CONTEXT: 'explore/context.md not found. Run: reviewctl explore context',
+  NOT_REVIEW_BRANCH:
+    'Not on review/* branch. Create or switch to a review branch first.',
+  MISSING_CONTEXT:
+    'explore/context.md not found. Run: reviewctl explore context',
   MISSING_DIFF: 'explore/diff.md not found. Run: reviewctl explore diff',
-  MISSING_PLAN: 'Plan is MISSING or AMBIGUOUS. Provide --plan-path or resolve manually.',
-  DRIFT_CONFIRMED: 'DRIFT_CONFIRMED blocks review run. Resolve drift issues first.',
+  MISSING_PLAN:
+    'Plan is MISSING or AMBIGUOUS. Provide --plan-path or resolve manually.',
+  DRIFT_CONFIRMED:
+    'DRIFT_CONFIRMED blocks review run. Resolve drift issues first.',
   NO_RUN_FOUND: 'No active review run found. Run: reviewctl init',
   ALREADY_RUNNING: 'Review run already in progress.',
   NO_PR: 'No PR found for current branch.',

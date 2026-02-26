@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import fs from 'fs';
 import ora from 'ora';
 import path from 'path';
-import { FinalResult, Verdict } from '../lib/constants.js';
+import type { FinalResult, Verdict } from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
 import {
   getCurrentRun,
@@ -259,6 +259,22 @@ interface StaticGateEvaluation {
   blocking: RequiredStaticResult[];
 }
 
+function normalizeAgentReviewStatus(
+  rawStatus: unknown,
+): 'PASS' | 'FAIL' | 'PENDING' {
+  const normalized = String(rawStatus || '').toUpperCase();
+
+  if (normalized === 'PASS' || normalized === 'DONE') {
+    return 'PASS';
+  }
+
+  if (normalized === 'FAIL' || normalized === 'INVALID') {
+    return 'FAIL';
+  }
+
+  return 'PENDING';
+}
+
 function checkCompletionStatus(
   runDir: string,
   reportsDir: string,
@@ -299,11 +315,12 @@ function checkCompletionStatus(
     if (statusPathExists) {
       try {
         const statusJson = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
+        const normalizedStatus = normalizeAgentReviewStatus(statusJson.status);
 
-        if (statusJson.status === 'DONE' && statusJson.validation?.valid) {
+        if (normalizedStatus === 'PASS' && statusJson.validation?.valid) {
           completed++;
         } else if (
-          statusJson.status === 'INVALID' ||
+          normalizedStatus === 'FAIL' ||
           (statusJson.validation && !statusJson.validation.valid)
         ) {
           invalid.push(agent);
@@ -376,7 +393,9 @@ function evaluateRequiredStatics(
 
   return {
     required,
-    blocking: required.filter((item) => item.status !== 'PASS' && item.status !== 'SKIP'),
+    blocking: required.filter(
+      (item) => item.status !== 'PASS' && item.status !== 'SKIP',
+    ),
   };
 }
 
@@ -444,7 +463,9 @@ function aggregateReports(
       agentStatus = status.status || 'pending';
     }
 
-    if (fs.existsSync(resultPath) && agentStatus === 'DONE') {
+    const normalizedAgentStatus = normalizeAgentReviewStatus(agentStatus);
+
+    if (fs.existsSync(resultPath) && normalizedAgentStatus === 'PASS') {
       try {
         const agentResult = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
         const stats = agentResult.statistics || {
@@ -791,5 +812,5 @@ function generateFinalJson(
       ),
       final_json: `_ctx/review_runs/${run.run_id}/final.json`,
     },
-  } as any; // Type assertion to allow additional fields
+  };
 }
