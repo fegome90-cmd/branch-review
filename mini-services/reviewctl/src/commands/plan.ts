@@ -1,23 +1,23 @@
-import fs from 'fs';
-import path from 'path';
 import chalk from 'chalk';
+import fs from 'fs';
 import ora from 'ora';
+import path from 'path';
 import { REVIEW_RUNS_DIR, ReviewLevel, ReviewType } from '../lib/constants.js';
-import {
-  getCurrentRun,
-  getRunDir,
-  validatePreconditions,
-  getDiffStats,
-  getChangedFiles,
-  saveCurrentRun,
-} from '../lib/utils.js';
-import {
-  detectStack,
-  detectSensitiveZones,
-  determineThirdAgent,
-  determineReviewType,
-} from '../lib/stack-detector.js';
 import { resolvePlan, savePlanRef } from '../lib/plan-resolver.js';
+import {
+  detectSensitiveZones,
+  detectStack,
+  determineReviewType,
+  determineThirdAgent,
+} from '../lib/stack-detector.js';
+import {
+  getChangedFiles,
+  getCurrentRun,
+  getDiffStats,
+  getRunDir,
+  saveCurrentRun,
+  validatePreconditions,
+} from '../lib/utils.js';
 
 export async function planCommand(options: { level: string; type: string; planPath?: string }) {
   const spinner = ora('Generating review plan...').start();

@@ -1,10 +1,10 @@
-import fs from 'fs';
-import path from 'path';
 import chalk from 'chalk';
+import fs from 'fs';
 import ora from 'ora';
+import path from 'path';
 import { FinalResult, Verdict } from '../lib/constants.js';
-import { getCurrentRun, getRunDir, saveCurrentRun, getDiffStats } from '../lib/utils.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
+import { getCurrentRun, getDiffStats, getRunDir, saveCurrentRun } from '../lib/utils.js';
 
 export async function verdictCommand(options: { json?: boolean; allowIncomplete?: boolean }) {
   const spinner = ora('Generating verdict...').start();
@@ -362,7 +362,11 @@ function aggregateReports(
     if (fs.existsSync(resultPath) && agentStatus === 'DONE') {
       try {
         const agentResult = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
-        const stats = agentResult.statistics || { p0_count: 0, p1_count: 0, p2_count: 0 };
+        const stats = agentResult.statistics || {
+          p0_count: 0,
+          p1_count: 0,
+          p2_count: 0,
+        };
 
         result.agents[agent] = {
           p0: stats.p0_count,

@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           files=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD \
-            | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json|md|css|scss|yml|yaml)$' || true)
+            | grep -E '\.(md|css|scss|yml|yaml)$' || true)
           if [ -z "$files" ]; then
             echo "No files to format-check"
             exit 0

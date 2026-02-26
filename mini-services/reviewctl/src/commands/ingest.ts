@@ -1,16 +1,16 @@
-import fs from 'fs';
-import path from 'path';
 import chalk from 'chalk';
+import fs from 'fs';
 import ora from 'ora';
-import { AgentName, AGENT_NAMES } from '../lib/constants.js';
-import { getCurrentRun, getRunDir, saveCurrentRun } from '../lib/utils.js';
+import path from 'path';
+import { AGENT_NAMES, AgentName } from '../lib/constants.js';
 import {
-  validateReport,
   computeHash,
-  sanitizeName,
   isValidName,
+  sanitizeName,
   ValidationResult,
+  validateReport,
 } from '../lib/contract-validator.js';
+import { getCurrentRun, getRunDir, saveCurrentRun } from '../lib/utils.js';
 
 // Static tools configuration
 const STATIC_TOOLS = ['biome', 'ruff', 'pyrefly', 'pytest', 'coderabbit'];

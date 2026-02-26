@@ -5,13 +5,13 @@
 
 ## Responsables y criterio por fase
 
-| Fase | Responsable | Criterio de salida |
-|---|---|---|
-| Fase 1 | Maintainer del repo | Inventario completo con categoría por stash |
-| Fase 2 | Maintainer del repo | Decisión preliminar (`keep/drop/archive`) por stash |
-| Fase 3 | Maintainer del repo | Backups generados para stashes no triviales |
-| Fase 4 | Maintainer + aprobación usuario | Solo se eliminan stashes aprobados |
-| Fase 5 | Maintainer del repo | Reporte final con trazabilidad y política futura |
+| Fase   | Responsable                     | Criterio de salida                                  |
+| ------ | ------------------------------- | --------------------------------------------------- |
+| Fase 1 | Maintainer del repo             | Inventario completo con categoría por stash         |
+| Fase 2 | Maintainer del repo             | Decisión preliminar (`keep/drop/archive`) por stash |
+| Fase 3 | Maintainer del repo             | Backups generados para stashes no triviales         |
+| Fase 4 | Maintainer + aprobación usuario | Solo se eliminan stashes aprobados                  |
+| Fase 5 | Maintainer del repo             | Reporte final con trazabilidad y política futura    |
 
 ## Fase 1 — Inventario y clasificación
 
@@ -26,6 +26,7 @@
 ## Fase 2 — Inspección mínima
 
 Para cada stash:
+
 1. Revisar archivos tocados (`git stash show --name-only stash@{n}`).
 2. Si hay duda, revisar diff corto (`git stash show -p stash@{n}` acotado).
 3. Definir decisión preliminar:

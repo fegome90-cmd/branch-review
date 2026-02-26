@@ -1,10 +1,10 @@
-import fs from 'fs';
-import path from 'path';
 import chalk from 'chalk';
+import fs from 'fs';
 import ora from 'ora';
-import { REVIEW_RUNS_DIR, MAX_AGENTS, DEFAULT_TIMEOUT_MINS, AgentName } from '../lib/constants.js';
-import { getCurrentRun, getRunDir, validatePreconditions, saveCurrentRun } from '../lib/utils.js';
+import path from 'path';
+import { AgentName, DEFAULT_TIMEOUT_MINS, MAX_AGENTS, REVIEW_RUNS_DIR } from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
+import { getCurrentRun, getRunDir, saveCurrentRun, validatePreconditions } from '../lib/utils.js';
 
 export async function runCommand(options: {
   backend?: string;
@@ -159,11 +159,36 @@ async function generateStaticsRequests(runId: string, runDir: string): Promise<v
   const planJson = loadPlanJson(runDir);
 
   // All possible static tools
-  const staticTools: Array<{ name: string; checkFile: string; command: string; lang: string }> = [
-    { name: 'biome', checkFile: 'biome.json', command: 'bun run lint:biome', lang: 'JS/TS' },
-    { name: 'ruff', checkFile: 'ruff.toml', command: 'ruff check .', lang: 'Python' },
-    { name: 'pytest', checkFile: 'pytest.ini', command: 'pytest -q', lang: 'Python' },
-    { name: 'pyrefly', checkFile: 'pyproject.toml', command: 'pyrefly check .', lang: 'Python' },
+  const staticTools: Array<{
+    name: string;
+    checkFile: string;
+    command: string;
+    lang: string;
+  }> = [
+    {
+      name: 'biome',
+      checkFile: 'biome.json',
+      command: 'bun run lint:biome',
+      lang: 'JS/TS',
+    },
+    {
+      name: 'ruff',
+      checkFile: 'ruff.toml',
+      command: 'ruff check .',
+      lang: 'Python',
+    },
+    {
+      name: 'pytest',
+      checkFile: 'pytest.ini',
+      command: 'pytest -q',
+      lang: 'Python',
+    },
+    {
+      name: 'pyrefly',
+      checkFile: 'pyproject.toml',
+      command: 'pyrefly check .',
+      lang: 'Python',
+    },
     {
       name: 'coderabbit',
       checkFile: '.coderabbit.yaml',
