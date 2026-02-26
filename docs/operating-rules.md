@@ -4,14 +4,13 @@ Repository operating rules for engineering changes in `branch-review`.
 
 ## 1) Branching and scope
 
-1. Start from updated main:
-   - `git checkout main && git pull --ff-only`
-2. Create a focused branch:
-   - `git checkout -b <type/short-name>`
+1. Start from updated main and create branch via wrapper:
+   - `bun run flow:branch -- <type/short-name>`
+2. Branches for reviews should use `review/*` prefix.
 3. Keep one primary concern per PR.
 4. Target PR size: `<= 300` net LOC when possible (excluding lockfiles/snapshots).
 
-## 2) Mandatory CLI flow (commit/PR)
+## 2) Mandatory CLI flow (commit/PR/merge)
 
 Use project wrappers (do not bypass):
 
@@ -20,6 +19,7 @@ Use project wrappers (do not bypass):
 3. Pre-PR gate: `bun run flow:prepr`
 4. Push: `git push -u origin <branch>`
 5. PR creation: `bun run flow:pr -- "PR title" "PR body" --base main`
+6. Merge: `bun run flow:merge -- <pr-number> [--squash|--merge|--rebase]`
 
 ## 3) Validation gates
 
@@ -45,14 +45,15 @@ Pre-PR scope override:
 ## 4) Artifacts and guardrails
 
 1. Do not include operational artifacts (`_ctx/review_runs/**`) in product PRs.
-2. If a run artifact must be committed, use explicit override and explain why in PR.
+2. If a run artifact must be committed, use explicit override:
+   - `ALLOW_CTX_ARTIFACTS=1 bun run flow:commit -- -m "..."`
 3. Keep generated and runtime files out of staged changes unless required by task.
 
 ## 5) Review and merge
 
 1. Wait for PR checks to pass.
 2. Address feedback in small commits.
-3. Merge via CLI with deterministic mode (`--squash` unless policy says otherwise).
+3. Merge via CLI wrapper with deterministic mode.
 4. Sync local main after merge.
 
 ## 6) Error and observability standards
@@ -70,5 +71,6 @@ Pre-PR scope override:
 ## Related docs
 
 - `docs/cli-flow.md`
+- `docs/typecheck-scopes.md`
 - `docs/plans/operating-model-improvement-plan-2026-02-26.md`
 - `AGENTS.md`

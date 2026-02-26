@@ -7,4 +7,5 @@ if [[ "${BR_REVIEW_USE_CLI_FLOW:-}" != "1" ]]; then
   exit 1
 fi
 
+bash scripts/check-staged-artifacts.sh
 bunx lint-staged
