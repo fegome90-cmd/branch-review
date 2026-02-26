@@ -1,0 +1,51 @@
+{
+  "run_id": "run_20260226_61dea96e",
+  "agent": "code-simplifier",
+  "timestamp": "2026-02-26T15:11:12.033Z",
+  "findings": [
+    {
+      "id": "P2-1",
+      "priority": "P2",
+      "title": "Complex conditional",
+      "location": {
+        "file": "Unknown"
+      },
+      "description": "Extracted from report",
+      "evidence": {
+        "snippet": "See full report"
+      }
+    }
+  ],
+  "statistics": {
+    "p0_count": 0,
+    "p1_count": 0,
+    "p2_count": 1
+  },
+  "verdict": {
+    "result": "PASS",
+    "justification": "Parsed from ingested report"
+  },
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [
+      "Missing recommended section: Test Plan",
+      "Missing recommended section: Confidence"
+    ],
+    "lineCount": 43,
+    "sections": {
+      "summary": true,
+      "findings_p0": true,
+      "findings_p1": true,
+      "findings_p2": true,
+      "test_plan": false,
+      "confidence": false,
+      "verdict": true
+    },
+    "statistics": {
+      "p0_count": 0,
+      "p1_count": 0,
+      "p2_count": 1
+    }
+  }
+}

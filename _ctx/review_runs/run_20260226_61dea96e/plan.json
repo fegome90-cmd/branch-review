@@ -1,0 +1,37 @@
+{
+  "run_id": "run_20260226_61dea96e",
+  "level": "quick",
+  "type": "python+sql",
+  "required_agents": [
+    "code-reviewer",
+    "code-simplifier"
+  ],
+  "optional_agents": [
+    "pr-test-analyzer"
+  ],
+  "statics": [
+    {
+      "name": "biome",
+      "required": false,
+      "reason": "JS/TS linter and formatter"
+    },
+    {
+      "name": "ruff",
+      "required": false,
+      "reason": "Python linter and formatter"
+    },
+    {
+      "name": "pyrefly",
+      "required": false,
+      "reason": "Python type checker (optional)"
+    },
+    {
+      "name": "coderabbit",
+      "required": false,
+      "reason": "AI external review (optional)"
+    }
+  ],
+  "max_agents": 3,
+  "timeout_mins": 8,
+  "generated_at": "2026-02-26T15:04:59.864Z"
+}

@@ -1,0 +1,37 @@
+name: PR Quality
+
+on:
+  pull_request:
+    branches: ['**']
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint changed files
+        run: bunx lint-staged --diff="origin/${{ github.base_ref }}...HEAD"
+
+      - name: Format check changed files
+        shell: bash
+        run: |
+          files=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD \
+            | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json|md|css|scss|yml|yaml)$' || true)
+          if [ -z "$files" ]; then
+            echo "No files to format-check"
+            exit 0
+          fi
+          bunx prettier --check $files

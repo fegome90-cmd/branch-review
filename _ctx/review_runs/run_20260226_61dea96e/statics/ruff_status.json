@@ -1,0 +1,6 @@
+{
+  "tool": "ruff",
+  "status": "SKIPPED",
+  "required": false,
+  "reason": "ruff.toml not found"
+}

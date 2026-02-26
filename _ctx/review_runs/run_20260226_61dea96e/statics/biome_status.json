@@ -1,0 +1,9 @@
+{
+  "tool": "biome",
+  "status": "DONE",
+  "required": false,
+  "completed_at": "2026-02-26T15:12:50.171Z",
+  "source_path": "/tmp/biome_output.md",
+  "content_hash": "ac05adc458207f19",
+  "is_extra": false
+}

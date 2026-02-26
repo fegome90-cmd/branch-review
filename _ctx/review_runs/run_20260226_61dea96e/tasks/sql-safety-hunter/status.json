@@ -1,0 +1,19 @@
+{
+  "agent": "sql-safety-hunter",
+  "status": "DONE",
+  "requested_at": "2026-02-26T15:13:30.161Z",
+  "ingested_at": "2026-02-26T15:13:30.161Z",
+  "run_id": "run_20260226_61dea96e",
+  "source_path": "/tmp/sql_report.md",
+  "content_hash": "da80428059f59a5f",
+  "is_extra": true,
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [
+      "Missing recommended section: Test Plan",
+      "Missing recommended section: Confidence"
+    ],
+    "line_count": 35
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "run_id": "run_20260226_61dea96e",
+  "agent": "sql-safety-hunter",
+  "timestamp": "2026-02-26T15:13:30.162Z",
+  "findings": [],
+  "statistics": {
+    "p0_count": 0,
+    "p1_count": 0,
+    "p2_count": 0
+  },
+  "verdict": {
+    "result": "PASS",
+    "justification": "Parsed from ingested report"
+  },
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [
+      "Missing recommended section: Test Plan",
+      "Missing recommended section: Confidence"
+    ],
+    "lineCount": 35,
+    "sections": {
+      "summary": true,
+      "findings_p0": true,
+      "findings_p1": true,
+      "findings_p2": true,
+      "test_plan": false,
+      "confidence": false,
+      "verdict": true
+    },
+    "statistics": {
+      "p0_count": 0,
+      "p1_count": 0,
+      "p2_count": 0
+    }
+  }
+}

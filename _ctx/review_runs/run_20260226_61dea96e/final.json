@@ -1,0 +1,60 @@
+{
+  "run_id": "run_20260226_61dea96e",
+  "branch": "review/main-72cb7b2",
+  "base_branch": "main",
+  "timestamp": "2026-02-26T15:11:22.466Z",
+  "verdict": "FAIL",
+  "statistics": {
+    "p0_total": 1,
+    "p1_total": 0,
+    "p2_total": 1,
+    "files_changed": 0,
+    "lines_added": 0,
+    "lines_removed": 0
+  },
+  "agents": {
+    "code-reviewer": {
+      "p0": 1,
+      "p1": 0,
+      "p2": 0,
+      "status": "done"
+    },
+    "code-simplifier": {
+      "p0": 0,
+      "p1": 0,
+      "p2": 1,
+      "status": "done"
+    }
+  },
+  "statics": {
+    "biome": {
+      "issues": 0,
+      "status": "SKIPPED"
+    },
+    "ruff": {
+      "issues": 0,
+      "status": "SKIPPED"
+    },
+    "coderabbit": {
+      "issues": 0,
+      "status": "SKIPPED"
+    },
+    "pyrefly": {
+      "issues": 0,
+      "status": "SKIPPED"
+    }
+  },
+  "drift": {
+    "status": "UNKNOWN",
+    "plan_source": "/home/z/my-project/docs/plans/sample-auth-migration.md"
+  },
+  "artifacts": {
+    "context": "explore/context.md",
+    "diff": "explore/diff.md",
+    "reports": [
+      "_ctx/review_runs/run_20260226_61dea96e/reports/reviewer_code-reviewer.md",
+      "_ctx/review_runs/run_20260226_61dea96e/reports/reviewer_code-simplifier.md"
+    ],
+    "final_json": "_ctx/review_runs/run_20260226_61dea96e/final.json"
+  }
+}

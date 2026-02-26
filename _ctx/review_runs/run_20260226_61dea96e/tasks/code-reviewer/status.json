@@ -1,0 +1,19 @@
+{
+  "agent": "code-reviewer",
+  "status": "DONE",
+  "requested_at": "2026-02-26T15:07:15.501Z",
+  "ingested_at": "2026-02-26T15:10:40.363Z",
+  "run_id": "run_20260226_61dea96e",
+  "source_path": "/tmp/p0_report.md",
+  "content_hash": "cf5540bfafce6d76",
+  "is_extra": false,
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [
+      "Missing recommended section: Test Plan",
+      "Missing recommended section: Confidence"
+    ],
+    "line_count": 43
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "run_id": "run_20260226_61dea96e",
+  "agent": "code-reviewer",
+  "timestamp": "2026-02-26T15:10:40.364Z",
+  "findings": [
+    {
+      "id": "P0-1",
+      "priority": "P0",
+      "title": "SQL Injection in login query",
+      "location": {
+        "file": "Unknown"
+      },
+      "description": "Extracted from report",
+      "evidence": {
+        "snippet": "See full report"
+      }
+    }
+  ],
+  "statistics": {
+    "p0_count": 1,
+    "p1_count": 0,
+    "p2_count": 0
+  },
+  "verdict": {
+    "result": "FAIL",
+    "justification": "Critical SQL injection vulnerability found"
+  },
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": [
+      "Missing recommended section: Test Plan",
+      "Missing recommended section: Confidence"
+    ],
+    "lineCount": 43,
+    "sections": {
+      "summary": true,
+      "findings_p0": true,
+      "findings_p1": true,
+      "findings_p2": true,
+      "test_plan": false,
+      "confidence": false,
+      "verdict": true
+    },
+    "statistics": {
+      "p0_count": 1,
+      "p1_count": 0,
+      "p2_count": 0
+    }
+  }
+}

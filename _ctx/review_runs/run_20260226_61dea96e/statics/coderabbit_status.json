@@ -1,0 +1,6 @@
+{
+  "tool": "coderabbit",
+  "status": "SKIPPED",
+  "required": false,
+  "reason": ".coderabbit.yaml not found"
+}
