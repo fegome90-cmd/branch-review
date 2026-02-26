@@ -12,7 +12,7 @@ branch-review coordinates code review agents and static analysis tools into a un
 
 ## Features
 
-- 8 CLI commands for complete review workflow
+- 9 CLI commands for complete review workflow
 - Multi-agent support (code-reviewer, code-simplifier, sql-safety-hunter)
 - Static analysis integration (biome, ruff, pyrefly)
 - Plan-based reviews with drift detection

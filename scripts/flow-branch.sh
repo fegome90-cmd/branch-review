@@ -40,7 +40,7 @@ echo "▶ flow:branch: syncing main from origin"
 git fetch origin main
 
 git checkout main >/dev/null 2>&1 || git checkout main
-git merge --ff-only origin/main
+git reset --hard origin/main
 
 git checkout -b "$TARGET_BRANCH"
-echo "✅ flow:branch: created '$TARGET_BRANCH' from updated main"
+echo "✅ flow:branch: created '$TARGET_BRANCH' from origin/main"

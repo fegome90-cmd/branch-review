@@ -20,11 +20,9 @@
     "typecheck:all": "bun run typecheck:app && bun run typecheck:mini-services",
     "test": "bun test",
     "flow:branch": "bash scripts/flow-branch.sh",
-    "flow:branch": "bash scripts/flow-branch.sh",
     "flow:commit": "bash scripts/git-flow-commit.sh",
     "flow:prepr": "bash scripts/run-pre-pr.sh",
     "flow:pr": "bash scripts/pr-create.sh",
-    "flow:merge": "bash scripts/flow-merge.sh",
     "flow:merge": "bash scripts/flow-merge.sh",
     "prepare": "husky"
   },
