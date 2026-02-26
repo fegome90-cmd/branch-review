@@ -376,7 +376,7 @@ function evaluateRequiredStatics(
 
   return {
     required,
-    blocking: required.filter((item) => item.status !== 'PASS'),
+    blocking: required.filter((item) => item.status !== 'PASS' && item.status !== 'SKIP'),
   };
 }
 

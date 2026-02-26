@@ -13,4 +13,11 @@ if [[ "${#BIOME_FILES[@]}" -eq 0 ]]; then
   exit 0
 fi
 
-bunx @biomejs/biome check --files-ignore-unknown=true "${BIOME_FILES[@]}"
+# Run Biome in batches to avoid exceeding shell argument length limits
+CHUNK_SIZE=200
+total_files=${#BIOME_FILES[@]}
+
+for ((i = 0; i < total_files; i += CHUNK_SIZE)); do
+  batch=( "${BIOME_FILES[@]:i:CHUNK_SIZE}" )
+  bunx @biomejs/biome check --files-ignore-unknown=true "${batch[@]}"
+done

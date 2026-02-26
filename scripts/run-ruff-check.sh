@@ -14,8 +14,13 @@ if [[ "${#PYTHON_FILES[@]}" -eq 0 ]]; then
 fi
 
 if ! command -v ruff >/dev/null 2>&1; then
-  python3 -m pip install --user --disable-pip-version-check ruff
+  python3 -m pip install --user --disable-pip-version-check "ruff==0.9.10"
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-ruff check "${PYTHON_FILES[@]}"
+# Run Ruff in batches to avoid exceeding shell argument length limits
+BATCH_SIZE=1000
+for ((i = 0; i < ${#PYTHON_FILES[@]}; i += BATCH_SIZE)); do
+  batch=("${PYTHON_FILES[@]:i:BATCH_SIZE}")
+  ruff check "${batch[@]}"
+done
