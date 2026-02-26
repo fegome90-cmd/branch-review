@@ -15,7 +15,8 @@ import {
   getBaseBranch,
   getDiffStats,
   getChangedFiles,
-  copyExplorerFiles
+  copyExplorerFiles,
+  saveCurrentRun
 } from '../lib/utils.js';
 import {
   detectStack,
@@ -253,12 +254,13 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
   if (run) {
     const driftStatus = parseDriftStatus(content);
     run.drift_status = driftStatus;
-    
+
     const runDir = path.join(REVIEW_RUNS_DIR, run.run_id);
     fs.writeFileSync(
       path.join(runDir, 'run.json'),
       JSON.stringify(run, null, 2)
     );
+    saveCurrentRun(run);
   }
 }
 
