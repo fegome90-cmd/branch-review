@@ -1,25 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { NextRequest } from 'next/server';
+import { z } from 'zod';
+import { jsonFail, jsonOk } from '@/lib/http';
+import { readFinalByRunId } from '@/lib/review-runs';
+
+const runIdSchema = z.string().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/);
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const runId = searchParams.get('runId');
-    
-    if (!runId) {
-      return NextResponse.json({ result: null, error: 'Missing runId' });
+
+    const parsedRunId = runIdSchema.safeParse(runId);
+    if (!parsedRunId.success) {
+      return jsonFail('Invalid or missing runId', 400, { code: 'INVALID_INPUT' });
     }
-    
-    const finalPath = path.join(process.cwd(), '_ctx', 'review_runs', runId, 'final.json');
-    
-    if (!fs.existsSync(finalPath)) {
-      return NextResponse.json({ result: null });
+
+    const finalData = await readFinalByRunId(parsedRunId.data);
+    if (!finalData) {
+      return jsonFail('Final data not found', 404, { code: 'NOT_FOUND' });
     }
-    
-    const finalData = JSON.parse(fs.readFileSync(finalPath, 'utf-8'));
-    return NextResponse.json({ result: finalData });
-  } catch (error) {
-    return NextResponse.json({ result: null, error: 'Failed to read final data' });
+
+    return jsonOk({ result: finalData });
+  } catch {
+    return jsonFail('Failed to read final data', 500, { code: 'INTERNAL_ERROR' });
   }
 }
