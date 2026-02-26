@@ -4,9 +4,17 @@ import ora from 'ora';
 import path from 'path';
 import { FinalResult, Verdict } from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
-import { getCurrentRun, getDiffStats, getRunDir, saveCurrentRun } from '../lib/utils.js';
+import {
+  getCurrentRun,
+  getDiffStats,
+  getRunDir,
+  saveCurrentRun,
+} from '../lib/utils.js';
 
-export async function verdictCommand(options: { json?: boolean; allowIncomplete?: boolean }) {
+export async function verdictCommand(options: {
+  json?: boolean;
+  allowIncomplete?: boolean;
+}) {
   const spinner = ora('Generating verdict...').start();
 
   try {
@@ -29,16 +37,24 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
 
     // Check for missing reports
     spinner.text = 'Checking report completion status...';
-    const completionStatus = checkCompletionStatus(runDir, reportsDir, tasksDir);
+    const completionStatus = checkCompletionStatus(
+      runDir,
+      reportsDir,
+      tasksDir,
+    );
 
     // Check for INVALID reports (higher priority than missing)
     if (completionStatus.invalid.length > 0 && !options.allowIncomplete) {
       spinner.warn(chalk.yellow('INVALID: Reports failed contract validation'));
 
       console.log(
-        chalk.gray(`\n  Completed: ${completionStatus.completed}/${completionStatus.total}`)
+        chalk.gray(
+          `\n  Completed: ${completionStatus.completed}/${completionStatus.total}`,
+        ),
       );
-      console.log(chalk.red(`  Invalid: ${completionStatus.invalid.join(', ')}`));
+      console.log(
+        chalk.red(`  Invalid: ${completionStatus.invalid.join(', ')}`),
+      );
 
       for (const agent of completionStatus.invalid) {
         const details = completionStatus.invalidDetails[agent] || [];
@@ -48,7 +64,11 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
         }
       }
 
-      console.log(chalk.yellow('\n  Fix the invalid reports and re-ingest with --overwrite'));
+      console.log(
+        chalk.yellow(
+          '\n  Fix the invalid reports and re-ingest with --overwrite',
+        ),
+      );
 
       // Write partial result
       const partialJson = {
@@ -62,7 +82,10 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
         invalid_details: completionStatus.invalidDetails,
         timestamp: new Date().toISOString(),
       };
-      fs.writeFileSync(path.join(runDir, 'final.json'), JSON.stringify(partialJson, null, 2));
+      fs.writeFileSync(
+        path.join(runDir, 'final.json'),
+        JSON.stringify(partialJson, null, 2),
+      );
 
       // Exit code 2 for INCOMPLETE/INVALID
       process.exit(2);
@@ -72,14 +95,24 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
       spinner.warn(chalk.yellow('INCOMPLETE: Missing required reports'));
 
       console.log(
-        chalk.gray(`\n  Completed: ${completionStatus.completed}/${completionStatus.total}`)
+        chalk.gray(
+          `\n  Completed: ${completionStatus.completed}/${completionStatus.total}`,
+        ),
       );
-      console.log(chalk.red(`  Missing: ${completionStatus.missing.join(', ')}`));
+      console.log(
+        chalk.red(`  Missing: ${completionStatus.missing.join(', ')}`),
+      );
       console.log(chalk.gray('\n  To ingest missing reports:'));
       for (const agent of completionStatus.missing) {
-        console.log(chalk.gray(`    reviewctl ingest --agent ${agent} --input <report.md>`));
+        console.log(
+          chalk.gray(
+            `    reviewctl ingest --agent ${agent} --input <report.md>`,
+          ),
+        );
       }
-      console.log(chalk.gray('\n  Or use --allow-incomplete to generate verdict anyway'));
+      console.log(
+        chalk.gray('\n  Or use --allow-incomplete to generate verdict anyway'),
+      );
 
       // Write partial result
       const partialJson = {
@@ -92,7 +125,10 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
         invalid_agents: completionStatus.invalid,
         timestamp: new Date().toISOString(),
       };
-      fs.writeFileSync(path.join(runDir, 'final.json'), JSON.stringify(partialJson, null, 2));
+      fs.writeFileSync(
+        path.join(runDir, 'final.json'),
+        JSON.stringify(partialJson, null, 2),
+      );
 
       // Exit code 2 for INCOMPLETE
       process.exit(2);
@@ -109,12 +145,21 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
 
     // Generate final.md
     spinner.text = 'Generating final report...';
-    const finalMd = generateFinalMd(aggregated, verdict, run, completionStatus, staticGate);
+    const finalMd = generateFinalMd(
+      aggregated,
+      verdict,
+      run,
+      completionStatus,
+      staticGate,
+    );
     fs.writeFileSync(path.join(runDir, 'final.md'), finalMd);
 
     // Generate final.json
     const finalJson = generateFinalJson(aggregated, verdict, run, staticGate);
-    fs.writeFileSync(path.join(runDir, 'final.json'), JSON.stringify(finalJson, null, 2));
+    fs.writeFileSync(
+      path.join(runDir, 'final.json'),
+      JSON.stringify(finalJson, null, 2),
+    );
 
     // Update run status
     run.status = 'completed';
@@ -131,17 +176,21 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
       }
       console.log(chalk.bold('═'.repeat(50)));
       const requiredStaticsPassed = staticGate.required.filter(
-        (item) => item.status === 'PASS'
+        (item) => item.status === 'PASS',
       ).length;
 
       console.log(chalk.gray(`\n  P0 (Blocking): ${aggregated.p0Total}`));
       console.log(chalk.gray(`  P1 (Important): ${aggregated.p1Total}`));
       console.log(chalk.gray(`  P2 (Minor): ${aggregated.p2Total}`));
-      console.log(chalk.gray(`  Reports: ${completionStatus.completed}/${completionStatus.total}`));
       console.log(
         chalk.gray(
-          `  Required statics: ${requiredStaticsPassed}/${staticGate.required.length} passed`
-        )
+          `  Reports: ${completionStatus.completed}/${completionStatus.total}`,
+        ),
+      );
+      console.log(
+        chalk.gray(
+          `  Required statics: ${requiredStaticsPassed}/${staticGate.required.length} passed`,
+        ),
       );
 
       if (staticGate.blocking.length > 0) {
@@ -149,17 +198,23 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
           chalk.red(
             `  Blocking statics: ${staticGate.blocking
               .map((item) => `${item.tool}=${item.status}`)
-              .join(', ')}`
-          )
+              .join(', ')}`,
+          ),
         );
       }
 
-      console.log(chalk.gray(`\n  Output: _ctx/review_runs/${run.run_id}/final.md`));
+      console.log(
+        chalk.gray(`\n  Output: _ctx/review_runs/${run.run_id}/final.md`),
+      );
 
       if (verdict === 'PASS') {
         console.log(chalk.gray('\n  Next: reviewctl merge'));
       } else {
-        console.log(chalk.yellow('\n  Next: Resolve P0/static blockers and re-run review'));
+        console.log(
+          chalk.yellow(
+            '\n  Next: Resolve P0/static blockers and re-run review',
+          ),
+        );
       }
     } else {
       console.log(JSON.stringify(finalJson, null, 2));
@@ -169,7 +224,9 @@ export async function verdictCommand(options: { json?: boolean; allowIncomplete?
     process.exit(verdict === 'PASS' ? 0 : 1);
   } catch (error) {
     spinner.fail(chalk.red('Failed to generate verdict'));
-    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+    console.error(
+      chalk.red(error instanceof Error ? error.message : String(error)),
+    );
     process.exit(1);
   }
 }
@@ -183,7 +240,13 @@ interface CompletionStatus {
   invalidDetails: Record<string, string[]>;
 }
 
-type RequiredStaticStatus = 'PASS' | 'FAIL' | 'UNKNOWN' | 'SKIP' | 'MISSING' | 'PENDING';
+type RequiredStaticStatus =
+  | 'PASS'
+  | 'FAIL'
+  | 'UNKNOWN'
+  | 'SKIP'
+  | 'MISSING'
+  | 'PENDING';
 
 interface RequiredStaticResult {
   tool: string;
@@ -199,7 +262,7 @@ interface StaticGateEvaluation {
 function checkCompletionStatus(
   runDir: string,
   reportsDir: string,
-  tasksDir: string
+  tasksDir: string,
 ): CompletionStatus {
   const planJson = loadPlanJson(runDir);
 
@@ -208,7 +271,12 @@ function checkCompletionStatus(
     ? planJson.required_agents
     : fs
         .readdirSync(reportsDir)
-        .filter((f) => f.startsWith('REQUEST_') && f.endsWith('.md') && !f.includes('statics'))
+        .filter(
+          (f) =>
+            f.startsWith('REQUEST_') &&
+            f.endsWith('.md') &&
+            !f.includes('statics'),
+        )
         .map((f) => f.replace('REQUEST_', '').replace('.md', ''));
 
   const missing: string[] = [];
@@ -239,7 +307,9 @@ function checkCompletionStatus(
           (statusJson.validation && !statusJson.validation.valid)
         ) {
           invalid.push(agent);
-          invalidDetails[agent] = statusJson.validation?.errors || ['Contract validation failed'];
+          invalidDetails[agent] = statusJson.validation?.errors || [
+            'Contract validation failed',
+          ];
         } else {
           missing.push(agent);
         }
@@ -261,10 +331,15 @@ function checkCompletionStatus(
   };
 }
 
-function evaluateRequiredStatics(runDir: string, staticsDir: string): StaticGateEvaluation {
+function evaluateRequiredStatics(
+  runDir: string,
+  staticsDir: string,
+): StaticGateEvaluation {
   const planJson = loadPlanJson(runDir);
   const requiredTools =
-    planJson?.statics.filter((tool) => tool.required).map((tool) => tool.name) || [];
+    planJson?.statics
+      .filter((tool) => tool.required)
+      .map((tool) => tool.name) || [];
 
   const required = requiredTools.map((tool) => {
     const statusPath = path.join(staticsDir, `${tool}_status.json`);
@@ -305,11 +380,18 @@ function evaluateRequiredStatics(runDir: string, staticsDir: string): StaticGate
   };
 }
 
-function normalizeRequiredStaticStatus(rawStatus: unknown): RequiredStaticStatus {
+function normalizeRequiredStaticStatus(
+  rawStatus: unknown,
+): RequiredStaticStatus {
   const normalized = String(rawStatus || '').toUpperCase();
 
   if (normalized === 'PASS' || normalized === 'DONE') return 'PASS';
-  if (normalized === 'FAIL' || normalized === 'FAILED' || normalized === 'INVALID') return 'FAIL';
+  if (
+    normalized === 'FAIL' ||
+    normalized === 'FAILED' ||
+    normalized === 'INVALID'
+  )
+    return 'FAIL';
   if (normalized === 'SKIP' || normalized === 'SKIPPED') return 'SKIP';
   if (normalized === 'MISSING') return 'MISSING';
   if (normalized.startsWith('PENDING')) return 'PENDING';
@@ -320,7 +402,10 @@ interface AggregatedResults {
   p0Total: number;
   p1Total: number;
   p2Total: number;
-  agents: Record<string, { p0: number; p1: number; p2: number; status: string }>;
+  agents: Record<
+    string,
+    { p0: number; p1: number; p2: number; status: string }
+  >;
   statics: Record<string, { issues: number; status: string }>;
   topP0Findings: any[];
   topP1Findings: any[];
@@ -330,7 +415,7 @@ function aggregateReports(
   reportsDir: string,
   tasksDir: string,
   staticsDir: string,
-  run: any
+  run: any,
 ): AggregatedResults {
   const result: AggregatedResults = {
     p0Total: 0,
@@ -399,7 +484,9 @@ function aggregateReports(
 
   // Aggregate static analysis
   if (fs.existsSync(staticsDir)) {
-    const statusFiles = fs.readdirSync(staticsDir).filter((f) => f.endsWith('_status.json'));
+    const statusFiles = fs
+      .readdirSync(staticsDir)
+      .filter((f) => f.endsWith('_status.json'));
     for (const file of statusFiles) {
       const toolName = file.replace('_status.json', '');
       const statusPath = path.join(staticsDir, file);
@@ -429,10 +516,12 @@ function aggregateReports(
 
 function determineVerdict(
   aggregated: AggregatedResults,
-  staticGate: StaticGateEvaluation
+  staticGate: StaticGateEvaluation,
 ): Verdict {
   // FAIL if any P0 findings or required static gates are not passing.
-  return aggregated.p0Total > 0 || staticGate.blocking.length > 0 ? 'FAIL' : 'PASS';
+  return aggregated.p0Total > 0 || staticGate.blocking.length > 0
+    ? 'FAIL'
+    : 'PASS';
 }
 
 function generateFinalMd(
@@ -440,7 +529,7 @@ function generateFinalMd(
   verdict: Verdict,
   run: any,
   completionStatus: CompletionStatus,
-  staticGate: StaticGateEvaluation
+  staticGate: StaticGateEvaluation,
 ): string {
   const timestamp = new Date().toISOString();
   const diffStats = getDiffStats();
@@ -493,7 +582,9 @@ ${
 | Required Statics | ${staticGate.required.length} |
 | Static Blockers | ${
     staticGate.blocking.length > 0
-      ? staticGate.blocking.map((item) => `${item.tool}=${item.status}`).join(', ')
+      ? staticGate.blocking
+          .map((item) => `${item.tool}=${item.status}`)
+          .join(', ')
       : 'None'
   } |
 
@@ -614,10 +705,12 @@ Total P2 issues: ${aggregated.p2Total}. See individual reports for details.
 ${
   verdict === 'FAIL'
     ? [
-        ...aggregated.topP0Findings.map((f, i) => `${i + 1}. Fix P0-${i + 1}: ${f.title}`),
+        ...aggregated.topP0Findings.map(
+          (f, i) => `${i + 1}. Fix P0-${i + 1}: ${f.title}`,
+        ),
         ...staticGate.blocking.map(
           (item, index) =>
-            `${aggregated.topP0Findings.length + index + 1}. Resolve static gate ${item.tool} (${item.status})`
+            `${aggregated.topP0Findings.length + index + 1}. Resolve static gate ${item.tool} (${item.status})`,
         ),
       ].join('\n')
     : '1. No blocking issues - ready for merge'
@@ -659,7 +752,7 @@ function generateFinalJson(
   aggregated: AggregatedResults,
   verdict: Verdict,
   run: any,
-  staticGate: StaticGateEvaluation
+  staticGate: StaticGateEvaluation,
 ): FinalResult {
   const diffStats = getDiffStats();
 
@@ -682,7 +775,8 @@ function generateFinalJson(
     static_gate: {
       required: staticGate.required,
       blocking: staticGate.blocking,
-      passed: staticGate.required.filter((item) => item.status === 'PASS').length,
+      passed: staticGate.required.filter((item) => item.status === 'PASS')
+        .length,
       total: staticGate.required.length,
     },
     drift: {
@@ -693,7 +787,7 @@ function generateFinalJson(
       context: 'explore/context.md',
       diff: 'explore/diff.md',
       reports: Object.keys(aggregated.agents).map(
-        (a) => `_ctx/review_runs/${run.run_id}/reports/reviewer_${a}.md`
+        (a) => `_ctx/review_runs/${run.run_id}/reports/reviewer_${a}.md`,
       ),
       final_json: `_ctx/review_runs/${run.run_id}/final.json`,
     },

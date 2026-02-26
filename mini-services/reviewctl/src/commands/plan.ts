@@ -19,7 +19,11 @@ import {
   validatePreconditions,
 } from '../lib/utils.js';
 
-export async function planCommand(options: { level: string; type: string; planPath?: string }) {
+export async function planCommand(options: {
+  level: string;
+  type: string;
+  planPath?: string;
+}) {
   const spinner = ora('Generating review plan...').start();
 
   try {
@@ -45,8 +49,15 @@ export async function planCommand(options: { level: string; type: string; planPa
         saveCurrentRun(run);
       } else {
         const planResult = await resolvePlan();
-        if (planResult.status === 'MISSING' || planResult.status === 'AMBIGUOUS') {
-          spinner.warn(chalk.yellow('Plan is MISSING or AMBIGUOUS. Use --plan-path to specify.'));
+        if (
+          planResult.status === 'MISSING' ||
+          planResult.status === 'AMBIGUOUS'
+        ) {
+          spinner.warn(
+            chalk.yellow(
+              'Plan is MISSING or AMBIGUOUS. Use --plan-path to specify.',
+            ),
+          );
           console.log(chalk.gray('  Continuing with plan-less review...'));
         } else {
           run.plan_path = planResult.path || undefined;
@@ -72,7 +83,11 @@ export async function planCommand(options: { level: string; type: string; planPa
     }
 
     if (type === 'auto') {
-      type = determineReviewType(stack, changedFiles, sensitiveZones) as ReviewType;
+      type = determineReviewType(
+        stack,
+        changedFiles,
+        sensitiveZones,
+      ) as ReviewType;
     }
 
     // Determine agents
@@ -89,7 +104,7 @@ export async function planCommand(options: { level: string; type: string; planPa
       stack,
       sensitiveZones,
       diffStats,
-      changedFiles
+      changedFiles,
     );
 
     // Save plan
@@ -99,7 +114,10 @@ export async function planCommand(options: { level: string; type: string; planPa
 
     // Generate plan.json with required_agents and statics
     const planJson = generatePlanJson(run, level, type, agents, stack);
-    fs.writeFileSync(path.join(runDir, 'plan.json'), JSON.stringify(planJson, null, 2));
+    fs.writeFileSync(
+      path.join(runDir, 'plan.json'),
+      JSON.stringify(planJson, null, 2),
+    );
 
     // Update run status
     run.status = 'planning';
@@ -114,18 +132,22 @@ export async function planCommand(options: { level: string; type: string; planPa
     console.log(chalk.gray(`\n  Next: reviewctl run`));
   } catch (error) {
     spinner.fail(chalk.red('Failed to generate plan'));
-    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+    console.error(
+      chalk.red(error instanceof Error ? error.message : String(error)),
+    );
     process.exit(1);
   }
 }
 
 function determineReviewLevel(
   diffStats: { files: number; added: number; removed: number },
-  zones: Array<{ zone: string; riskLevel: string }>
+  zones: Array<{ zone: string; riskLevel: string }>,
 ): ReviewLevel {
   const hasHighRisk = zones.some((z) => z.riskLevel === 'HIGH');
-  const largeChange = diffStats.files > 20 || diffStats.added + diffStats.removed > 500;
-  const mediumChange = diffStats.files > 5 || diffStats.added + diffStats.removed > 100;
+  const largeChange =
+    diffStats.files > 20 || diffStats.added + diffStats.removed > 500;
+  const mediumChange =
+    diffStats.files > 5 || diffStats.added + diffStats.removed > 100;
 
   if (hasHighRisk && largeChange) return 'comprehensive';
   if (hasHighRisk || largeChange) return 'thorough';
@@ -141,7 +163,7 @@ function generatePlanMd(
   stack: any,
   zones: any[],
   diffStats: any,
-  changedFiles: string[]
+  changedFiles: string[],
 ): string {
   const timestamp = new Date().toISOString();
 
@@ -297,16 +319,24 @@ function getThirdAgentMission(agent: string): string {
 
 function getThirdAgentFocus(agent: string, changedFiles: string[]): string {
   const testFiles = changedFiles.filter((f) => /test|spec/i.test(f));
-  const sqlFiles = changedFiles.filter((f) => /\.sql$|schema|migration/i.test(f));
+  const sqlFiles = changedFiles.filter((f) =>
+    /\.sql$|schema|migration/i.test(f),
+  );
   const apiFiles = changedFiles.filter((f) => /api|route/i.test(f));
 
   switch (agent) {
     case 'silent-failure-hunter':
-      return apiFiles.map((f) => `- ${f}`).join('\n') || '- No API files detected';
+      return (
+        apiFiles.map((f) => `- ${f}`).join('\n') || '- No API files detected'
+      );
     case 'sql-safety-hunter':
-      return sqlFiles.map((f) => `- ${f}`).join('\n') || '- No SQL files detected';
+      return (
+        sqlFiles.map((f) => `- ${f}`).join('\n') || '- No SQL files detected'
+      );
     case 'pr-test-analyzer':
-      return testFiles.map((f) => `- ${f}`).join('\n') || '- No test files changed';
+      return (
+        testFiles.map((f) => `- ${f}`).join('\n') || '- No test files changed'
+      );
     default:
       return '- Review all changed files';
   }
@@ -334,7 +364,7 @@ function generatePlanJson(
   level: ReviewLevel,
   type: ReviewType,
   agents: string[],
-  stack: any
+  stack: any,
 ): PlanJson {
   // code-reviewer and code-simplifier are ALWAYS required
   const requiredAgents = ['code-reviewer', 'code-simplifier'];
@@ -351,7 +381,10 @@ function generatePlanJson(
   const statics: PlanJson['statics'] = [];
 
   // biome - required for TS/JS projects
-  if (stack.languages.includes('TypeScript') || stack.languages.includes('JavaScript')) {
+  if (
+    stack.languages.includes('TypeScript') ||
+    stack.languages.includes('JavaScript')
+  ) {
     statics.push({
       name: 'biome',
       required: level !== 'quick',

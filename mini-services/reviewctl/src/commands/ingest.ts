@@ -67,7 +67,9 @@ export async function ingestCommand(options: {
     }
 
     if (!content || content.trim().length === 0) {
-      spinner.fail('No content provided. Use --input <file> or pipe content via stdin.');
+      spinner.fail(
+        'No content provided. Use --input <file> or pipe content via stdin.',
+      );
       process.exit(1);
     }
 
@@ -83,7 +85,7 @@ export async function ingestCommand(options: {
         spinner,
         sourcePath,
         options.extra || false,
-        options.overwrite || false
+        options.overwrite || false,
       );
     } else if (options.static) {
       await ingestStaticReport(
@@ -94,7 +96,7 @@ export async function ingestCommand(options: {
         spinner,
         sourcePath,
         options.extra || false,
-        options.overwrite || false
+        options.overwrite || false,
       );
     } else {
       spinner.fail('Must specify --agent <name> or --static <tool>');
@@ -104,7 +106,9 @@ export async function ingestCommand(options: {
     }
   } catch (error) {
     spinner.fail(chalk.red('Ingest failed'));
-    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+    console.error(
+      chalk.red(error instanceof Error ? error.message : String(error)),
+    );
     process.exit(1);
   }
 }
@@ -137,7 +141,7 @@ async function ingestAgentReport(
   spinner: any,
   sourcePath: string | null,
   isExtra: boolean,
-  allowOverwrite: boolean
+  allowOverwrite: boolean,
 ): Promise<void> {
   // Sanitize and validate agent name
   const sanitizedAgent = sanitizeName(agentName);
@@ -152,16 +156,31 @@ async function ingestAgentReport(
   // Check against plan (plan binding)
   const planJson = loadPlanJson(runDir);
   if (planJson && !isExtra) {
-    const allPlannedAgents = [...planJson.required_agents, ...planJson.optional_agents];
+    const allPlannedAgents = [
+      ...planJson.required_agents,
+      ...planJson.optional_agents,
+    ];
 
     if (!allPlannedAgents.includes(sanitizedAgent)) {
       spinner.fail(`Agent "${sanitizedAgent}" is not in the plan`);
-      console.log(chalk.gray(`  Required agents: ${planJson.required_agents.join(', ')}`));
       console.log(
-        chalk.gray(`  Optional agents: ${planJson.optional_agents.join(', ') || 'None'}`)
+        chalk.gray(`  Required agents: ${planJson.required_agents.join(', ')}`),
       );
-      console.log(chalk.yellow(`\n  Use --extra to ingest reports for agents not in the plan`));
-      console.log(chalk.yellow(`  (Extra reports are stored but not counted toward completion)`));
+      console.log(
+        chalk.gray(
+          `  Optional agents: ${planJson.optional_agents.join(', ') || 'None'}`,
+        ),
+      );
+      console.log(
+        chalk.yellow(
+          `\n  Use --extra to ingest reports for agents not in the plan`,
+        ),
+      );
+      console.log(
+        chalk.yellow(
+          `  (Extra reports are stored but not counted toward completion)`,
+        ),
+      );
       process.exit(1);
     }
   }
@@ -218,11 +237,16 @@ async function ingestAgentReport(
   // Write result.json with parsed findings
   const result = parseReport(content, sanitizedAgent as AgentName, run.run_id);
   result.validation = validation;
-  fs.writeFileSync(path.join(agentTaskDir, 'result.json'), JSON.stringify(result, null, 2));
+  fs.writeFileSync(
+    path.join(agentTaskDir, 'result.json'),
+    JSON.stringify(result, null, 2),
+  );
 
   // Show result
   if (!validation.valid) {
-    spinner.warn(chalk.yellow(`Report ingested but INVALID: ${sanitizedAgent}`));
+    spinner.warn(
+      chalk.yellow(`Report ingested but INVALID: ${sanitizedAgent}`),
+    );
     console.log(chalk.red('\n  Contract violations:'));
     for (const err of validation.errors) {
       console.log(chalk.red(`    - ${err}`));
@@ -252,7 +276,9 @@ async function ingestAgentReport(
 
   // Show completion status
   const stats = checkCompletionStatus(run.run_id, runDir);
-  console.log(chalk.gray(`\n  Progress: ${stats.completed}/${stats.total} reports valid`));
+  console.log(
+    chalk.gray(`\n  Progress: ${stats.completed}/${stats.total} reports valid`),
+  );
 
   if (stats.invalid.length > 0) {
     console.log(chalk.red(`  Invalid: ${stats.invalid.join(', ')}`));
@@ -260,9 +286,13 @@ async function ingestAgentReport(
 
   if (stats.missing.length > 0) {
     console.log(chalk.yellow(`  Missing: ${stats.missing.join(', ')}`));
-    console.log(chalk.gray(`\n  Next: reviewctl ingest --agent <name> --input <file>`));
+    console.log(
+      chalk.gray(`\n  Next: reviewctl ingest --agent <name> --input <file>`),
+    );
   } else {
-    console.log(chalk.green(`\n  All reports complete! Run: reviewctl verdict`));
+    console.log(
+      chalk.green(`\n  All reports complete! Run: reviewctl verdict`),
+    );
   }
 }
 
@@ -274,7 +304,7 @@ async function ingestStaticReport(
   spinner: any,
   sourcePath: string | null,
   isExtra: boolean,
-  allowOverwrite: boolean
+  allowOverwrite: boolean,
 ): Promise<void> {
   // Sanitize and validate tool name
   const sanitizedTool = sanitizeName(toolName);
@@ -294,7 +324,11 @@ async function ingestStaticReport(
     if (!plannedTools.includes(sanitizedTool)) {
       spinner.fail(`Static tool "${sanitizedTool}" is not in the plan`);
       console.log(chalk.gray(`  Planned tools: ${plannedTools.join(', ')}`));
-      console.log(chalk.yellow(`\n  Use --extra to ingest reports for tools not in the plan`));
+      console.log(
+        chalk.yellow(
+          `\n  Use --extra to ingest reports for tools not in the plan`,
+        ),
+      );
       process.exit(1);
     }
   }
@@ -309,7 +343,10 @@ async function ingestStaticReport(
   }
 
   // Write the report
-  fs.writeFileSync(reportPath, `# ${sanitizedTool} Analysis\n\n\`\`\`\n${content}\n\`\`\`\n`);
+  fs.writeFileSync(
+    reportPath,
+    `# ${sanitizedTool} Analysis\n\n\`\`\`\n${content}\n\`\`\`\n`,
+  );
 
   // Determine if this was required or optional
   let isRequired = false;
@@ -318,7 +355,8 @@ async function ingestStaticReport(
     isRequired = toolConfig?.required || false;
   }
 
-  const pytestSummary = sanitizedTool === 'pytest' ? parsePytestSummary(content) : null;
+  const pytestSummary =
+    sanitizedTool === 'pytest' ? parsePytestSummary(content) : null;
   const staticSummary =
     pytestSummary === null
       ? parseStaticSummary(sanitizedTool, content)
@@ -457,7 +495,10 @@ function parseBiomeSummary(content: string): StaticSummary {
     };
   }
 
-  if (/found\s+0\s+errors?/i.test(content) || /checked\s+\d+\s+files/i.test(content)) {
+  if (
+    /found\s+0\s+errors?/i.test(content) ||
+    /checked\s+\d+\s+files/i.test(content)
+  ) {
     return {
       status: 'PASS',
       reason: 'Biome output parsed successfully',
@@ -515,7 +556,10 @@ function parseRuffSummary(content: string): StaticSummary {
   };
 }
 
-function parseGenericStaticSummary(content: string, toolName: string): StaticSummary {
+function parseGenericStaticSummary(
+  content: string,
+  toolName: string,
+): StaticSummary {
   const normalized = content.toLowerCase();
 
   if (normalized.trim().length === 0) {
@@ -561,7 +605,9 @@ function parsePytestSummary(content: string): PytestSummary {
     content
       .split('\n')
       .reverse()
-      .find((line) => /\b(passed|failed|errors?|skipped|xfailed|xpassed)\b/i.test(line)) || '';
+      .find((line) =>
+        /\b(passed|failed|errors?|skipped|xfailed|xpassed)\b/i.test(line),
+      ) || '';
 
   const readMetric = (name: string): number => {
     const match = summaryLine.match(new RegExp(`(\\d+)\\s+${name}`, 'i'));
@@ -573,10 +619,13 @@ function parsePytestSummary(content: string): PytestSummary {
   const errors = readMetric('error') + readMetric('errors');
   const skipped = readMetric('skipped');
 
-  const coverageThreshold = Number(process.env.REVIEWCTL_PYTEST_COVERAGE_THRESHOLD || '80');
+  const coverageThreshold = Number(
+    process.env.REVIEWCTL_PYTEST_COVERAGE_THRESHOLD || '80',
+  );
   const coverageMatch = content.match(/TOTAL\s+\d+\s+\d+\s+(\d+)%/i);
   const coveragePercent = coverageMatch ? Number(coverageMatch[1]) : null;
-  const coverageMet = coveragePercent === null ? null : coveragePercent >= coverageThreshold;
+  const coverageMet =
+    coveragePercent === null ? null : coveragePercent >= coverageThreshold;
 
   if (failed > 0 || errors > 0 || /\bfailed\b/i.test(normalized)) {
     return {
@@ -644,59 +693,79 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
   };
 
   // Extract P0 findings
-  const p0Matches = content.match(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*([^\n]+)/gi);
+  const p0Matches = content.match(
+    /(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
+  );
   if (p0Matches) {
     result.findings.push(
       ...p0Matches.map((m, i) => ({
         id: `P0-${i + 1}`,
         priority: 'P0',
-        title: m.replace(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*/, '').trim(),
+        title: m
+          .replace(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*/, '')
+          .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',
         evidence: { snippet: 'See full report' },
-      }))
+      })),
     );
   }
 
   // Extract P1 findings
-  const p1Matches = content.match(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*([^\n]+)/gi);
+  const p1Matches = content.match(
+    /(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
+  );
   if (p1Matches) {
     result.findings.push(
       ...p1Matches.map((m, i) => ({
         id: `P1-${i + 1}`,
         priority: 'P1',
-        title: m.replace(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*/, '').trim(),
+        title: m
+          .replace(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*/, '')
+          .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',
         evidence: { snippet: 'See full report' },
-      }))
+      })),
     );
   }
 
   // Extract P2 findings
-  const p2Matches = content.match(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*([^\n]+)/gi);
+  const p2Matches = content.match(
+    /(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
+  );
   if (p2Matches) {
     result.findings.push(
       ...p2Matches.map((m, i) => ({
         id: `P2-${i + 1}`,
         priority: 'P2',
-        title: m.replace(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*/, '').trim(),
+        title: m
+          .replace(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*/, '')
+          .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',
         evidence: { snippet: 'See full report' },
-      }))
+      })),
     );
   }
 
   // Count statistics
-  result.statistics.p0_count = result.findings.filter((f: any) => f.priority === 'P0').length;
-  result.statistics.p1_count = result.findings.filter((f: any) => f.priority === 'P1').length;
-  result.statistics.p2_count = result.findings.filter((f: any) => f.priority === 'P2').length;
+  result.statistics.p0_count = result.findings.filter(
+    (f: any) => f.priority === 'P0',
+  ).length;
+  result.statistics.p1_count = result.findings.filter(
+    (f: any) => f.priority === 'P1',
+  ).length;
+  result.statistics.p2_count = result.findings.filter(
+    (f: any) => f.priority === 'P2',
+  ).length;
 
   // Check for PASS/FAIL in verdict section
   if (/##\s*Verdict[^#]*\*\*FAIL\*\*/i.test(content)) {
     result.verdict.result = 'FAIL';
-    const justificationMatch = content.match(/##\s*Verdict[^#]*\*\*FAIL\*\*\s*[-–]?\s*([^\n]+)/i);
+    const justificationMatch = content.match(
+      /##\s*Verdict[^#]*\*\*FAIL\*\*\s*[-–]?\s*([^\n]+)/i,
+    );
     if (justificationMatch) {
       result.verdict.justification = justificationMatch[1].trim();
     }
@@ -707,7 +776,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 
 function checkCompletionStatus(
   runId: string,
-  runDir: string
+  runDir: string,
 ): {
   completed: number;
   total: number;
