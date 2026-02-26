@@ -299,11 +299,12 @@ function checkCompletionStatus(
     if (statusPathExists) {
       try {
         const statusJson = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
+        const normalizedStatus = normalizeAgentReviewStatus(statusJson.status);
 
-        if (statusJson.status === 'DONE' && statusJson.validation?.valid) {
+        if (normalizedStatus === 'PASS' && statusJson.validation?.valid) {
           completed++;
         } else if (
-          statusJson.status === 'INVALID' ||
+          normalizedStatus === 'FAIL' ||
           (statusJson.validation && !statusJson.validation.valid)
         ) {
           invalid.push(agent);
@@ -444,7 +445,9 @@ function aggregateReports(
       agentStatus = status.status || 'pending';
     }
 
-    if (fs.existsSync(resultPath) && agentStatus === 'DONE') {
+    const normalizedAgentStatus = normalizeAgentReviewStatus(agentStatus);
+
+    if (fs.existsSync(resultPath) && normalizedAgentStatus === 'PASS') {
       try {
         const agentResult = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
         const stats = agentResult.statistics || {
@@ -791,5 +794,5 @@ function generateFinalJson(
       ),
       final_json: `_ctx/review_runs/${run.run_id}/final.json`,
     },
-  } as any; // Type assertion to allow additional fields
+  };
 }

@@ -32,6 +32,7 @@ jobs:
             | grep -E '\.(md|css|scss|yml|yaml)$' || true)
           if [ -z "$files" ]; then
             echo "No files to format-check"
+            rm -f "$tmp_files"
             exit 0
           fi
           bunx prettier --check $files

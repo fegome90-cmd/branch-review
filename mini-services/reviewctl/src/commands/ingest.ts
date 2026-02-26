@@ -257,7 +257,7 @@ async function ingestAgentReport(
         console.log(chalk.yellow(`    - ${warn}`));
       }
     }
-    console.log(chalk.gray(`\n  Status: INVALID (not counted as complete)`));
+    console.log(chalk.gray(`\n  Status: FAIL (not counted as complete)`));
     console.log(chalk.gray('  Fix the report and re-ingest with --overwrite'));
     process.exit(2);
   }
@@ -406,6 +406,8 @@ async function ingestStaticReport(
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
+    let firstChunkReceived = false;
+
     process.stdin.setEncoding('utf-8');
 
     process.stdin.on('readable', () => {
@@ -429,6 +431,36 @@ function readStdin(): Promise<string> {
         reject(new Error('No input received from stdin after 5 seconds'));
       }
     }, 5000);
+
+    const onData = (chunk: string) => {
+      if (!firstChunkReceived) {
+        firstChunkReceived = true;
+        clearTimeout(timeoutId);
+      }
+
+      data += chunk;
+    };
+
+    const onEnd = () => {
+      cleanup();
+      resolve(data);
+    };
+
+    const onError = (err: Error) => {
+      cleanup();
+      reject(err);
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      process.stdin.off('data', onData);
+      process.stdin.off('end', onEnd);
+      process.stdin.off('error', onError);
+    };
+
+    process.stdin.on('data', onData);
+    process.stdin.on('end', onEnd);
+    process.stdin.on('error', onError);
   });
 }
 
@@ -810,7 +842,10 @@ function checkCompletionStatus(
 
       if (status.status === 'DONE' && status.validation?.valid) {
         completed++;
-      } else if (status.status === 'INVALID') {
+      } else if (
+        normalizedStatus === 'FAIL' ||
+        (status.validation && !status.validation.valid)
+      ) {
         invalid.push(agent);
       } else {
         missing.push(agent);
