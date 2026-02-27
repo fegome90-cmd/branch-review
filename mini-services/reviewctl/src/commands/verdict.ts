@@ -259,6 +259,20 @@ interface StaticGateEvaluation {
   blocking: RequiredStaticResult[];
 }
 
+export function normalizeAgentReviewStatus(rawStatus: unknown): 'PASS' | 'FAIL' | 'PENDING' {
+  const normalized = String(rawStatus || '').toUpperCase();
+
+  if (normalized === 'DONE' || normalized === 'PASS' || normalized === 'COMPLETED') {
+    return 'PASS';
+  }
+
+  if (normalized === 'FAIL' || normalized === 'FAILED' || normalized === 'INVALID' || normalized === 'ERROR') {
+    return 'FAIL';
+  }
+
+  return 'PENDING';
+}
+
 function checkCompletionStatus(
   runDir: string,
   reportsDir: string,

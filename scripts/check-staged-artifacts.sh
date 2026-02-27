@@ -11,7 +11,7 @@ if [[ -z "$STAGED_FILES" ]]; then
   exit 0
 fi
 
-BLOCKED=$(echo "$STAGED_FILES" | grep '^_ctx/review_runs/' || true)
+BLOCKED=$(echo "$STAGED_FILES" | grep -E '^_ctx/(review_runs|pr_comments)/' || true)
 if [[ -z "$BLOCKED" ]]; then
   exit 0
 fi

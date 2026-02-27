@@ -19,7 +19,7 @@ Use project wrappers (do not bypass):
 3. Pre-PR gate: `bun run flow:prepr`
 4. Push: `git push -u origin <branch>`
 5. PR creation: `bun run flow:pr -- "PR title" "PR body" --base main`
-   - Includes automatic post-PR learning pass for skill extraction.
+   - Includes automatic post-PR learning hook in best-effort mode (warnings only).
 6. Merge: `bun run flow:merge -- <pr-number> [--squash|--merge|--rebase]`
 
 ## 3) Validation gates
@@ -48,7 +48,7 @@ Pre-PR scope override:
 
 ## 4) Artifacts and guardrails
 
-1. Do not include operational artifacts (`_ctx/review_runs/**`) in product PRs.
+1. Do not include operational artifacts (`_ctx/review_runs/**`, `_ctx/pr_comments/**`) in product PRs.
 2. If a run artifact must be committed, use explicit override:
    - `ALLOW_CTX_ARTIFACTS=1 bun run flow:commit -- -m "..."`
 3. Keep generated and runtime files out of staged changes unless required by task.
@@ -61,6 +61,8 @@ Pre-PR scope override:
 3. Use PR comments wrapper to track/resolve review feedback:
    - `bun run flow:pr-comments -- review`
    - `bun run flow:pr-comments -- reply --comment-id <id> --body "..."`
+   - Optional batch mode (explicit opt-in):
+     - `bun run flow:pr-comments -- reply --apply --from <todo.md|replies.json> --dry-run`
 4. Merge via CLI wrapper with deterministic mode.
 5. Sync local main after merge.
 

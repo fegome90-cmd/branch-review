@@ -66,7 +66,7 @@ When the task includes commit/push/PR/merge operations, use the project CLI wrap
 Hook enforcement in this repo:
 
 - `pre-commit` blocks direct commits unless `flow:commit` is used.
-- `pre-commit` blocks staged `_ctx/review_runs/**` artifacts unless `ALLOW_CTX_ARTIFACTS=1`.
+- `pre-commit` blocks staged `_ctx/review_runs/**` and `_ctx/pr_comments/**` artifacts unless `ALLOW_CTX_ARTIFACTS=1`.
 - `pre-pr` runs lint + biome + ruff + test + typecheck scope and writes a marker.
 - `pre-push` blocks pushes when the `pre-pr` marker is missing/stale for current HEAD.
 

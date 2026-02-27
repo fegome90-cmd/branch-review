@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
-import path from 'path';
 import { AGENT_NAMES, type AgentName } from '../lib/constants.js';
 import {
   computeHash,
@@ -17,6 +16,7 @@ import {
   type StaticSummary,
 } from '../lib/static-parsers.js';
 import { getCurrentRun, getRunDir } from '../lib/utils.js';
+import { normalizeAgentReviewStatus } from './verdict.js';
 
 // Static tools configuration
 const STATIC_TOOLS = ['biome', 'ruff', 'pyrefly', 'pytest', 'coderabbit'];
@@ -412,39 +412,16 @@ async function ingestStaticReport(
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
-    let firstChunkReceived = false;
 
     process.stdin.setEncoding('utf-8');
 
-    process.stdin.on('readable', () => {
-      let chunk: string | null = process.stdin.read() as string | null;
-      while (chunk !== null) {
-        data += chunk;
-        chunk = process.stdin.read() as string | null;
-      }
-    });
-
-    process.stdin.on('end', () => {
-      resolve(data);
-    });
-
-    process.stdin.on('error', (err) => {
-      reject(err);
-    });
-
-    // Timeout if no input
-    setTimeout(() => {
-      if (data.length === 0) {
-        reject(new Error('No input received from stdin after 5 seconds'));
-      }
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error('No input received from stdin after 5 seconds'));
     }, 5000);
 
     const onData = (chunk: string) => {
-      if (!firstChunkReceived) {
-        firstChunkReceived = true;
-        clearTimeout(timeoutId);
-      }
-
+      clearTimeout(timeoutId);
       data += chunk;
     };
 
@@ -741,8 +718,9 @@ function checkCompletionStatus(
 
     try {
       const status = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
+      const normalizedStatus = normalizeAgentReviewStatus(status.status);
 
-      if (status.status === 'DONE' && status.validation?.valid) {
+      if (normalizedStatus === 'PASS' && status.validation?.valid) {
         completed++;
       } else if (
         normalizedStatus === 'FAIL' ||

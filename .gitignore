@@ -47,5 +47,11 @@ test
 prompt
 
 server.log
+
+# Local workflow artifacts
+/_ctx/pr_comments/
 # Skills directory
 /skills/
+# Pi and review artifacts
+.pi/
+_ctx/

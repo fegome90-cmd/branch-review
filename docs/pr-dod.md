@@ -19,7 +19,7 @@ A PR is ready to merge only when all items below are true.
 
 - [ ] Commit was created through `bun run flow:commit -- -m "..."`.
 - [ ] PR was created through `bun run flow:pr -- "title" "body" --base main`.
-- [ ] No `_ctx/review_runs/**` artifacts included unless explicitly approved.
+- [ ] No `_ctx/review_runs/**` or `_ctx/pr_comments/**` artifacts included unless explicitly approved.
 
 ## 4) Review quality
 
