@@ -1,40 +1,38 @@
-import fs from 'fs';
-import path from 'path';
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
-import { execSync } from 'child_process';
-import {
-  REVIEW_RUNS_DIR,
-  RunMetadata,
-  RunStatus,
-  PlanStatus
-} from '../lib/constants.js';
+import type { PlanStatus, RunMetadata, RunStatus } from '../lib/constants.js';
+import { resolvePlan } from '../lib/plan-resolver.js';
 import {
   ensureDir,
   generateRunId,
-  getCurrentBranch,
   getBaseBranch,
+  getCurrentBranch,
   getCurrentSha,
+  getRunDir,
   isOnReviewBranch,
   saveCurrentRun,
-  getRunDir
 } from '../lib/utils.js';
-import { resolvePlan } from '../lib/plan-resolver.js';
 
-export async function initCommand(options: { create?: boolean; branch?: string }) {
+export async function initCommand(options: {
+  create?: boolean;
+  branch?: string;
+}) {
   const spinner = ora('Initializing review run...').start();
-  
+
   try {
     let branch = options.branch || getCurrentBranch();
     const baseBranch = getBaseBranch();
     const sha = getCurrentSha();
-    
+
     // Check if on review branch or create one
     if (!isOnReviewBranch()) {
       if (options.create) {
         const newBranch = `review/${baseBranch}-${sha}`;
         spinner.text = `Creating review branch: ${newBranch}`;
-        
+
         try {
           execSync(`git checkout -b ${newBranch}`, { stdio: 'inherit' });
           branch = newBranch;
@@ -43,21 +41,23 @@ export async function initCommand(options: { create?: boolean; branch?: string }
           throw error;
         }
       } else {
-        spinner.fail(chalk.yellow('Not on a review/* branch. Use --create to create one.'));
+        spinner.fail(
+          chalk.yellow('Not on a review/* branch. Use --create to create one.'),
+        );
         console.log(chalk.gray(`  Example: reviewctl init --create`));
         process.exit(1);
       }
     }
-    
+
     // Generate run ID
     const runId = generateRunId();
     const runDir = getRunDir(runId);
     ensureDir(runDir);
-    
+
     // Resolve plan
     spinner.text = 'Resolving Plan SSOT...';
     const planResult = await resolvePlan();
-    
+
     // Create run metadata
     const run: RunMetadata = {
       run_id: runId,
@@ -66,18 +66,18 @@ export async function initCommand(options: { create?: boolean; branch?: string }
       created_at: new Date().toISOString(),
       status: 'pending' as RunStatus,
       plan_status: planResult.status as PlanStatus,
-      plan_path: planResult.path || undefined
+      plan_path: planResult.path || undefined,
     };
-    
+
     // Save run metadata
     saveCurrentRun(run);
-    
+
     // Save initial run file
     fs.writeFileSync(
       path.join(runDir, 'run.json'),
-      JSON.stringify(run, null, 2)
+      JSON.stringify(run, null, 2),
     );
-    
+
     // Create subdirectories
     ensureDir(path.join(runDir, 'reports'));
     ensureDir(path.join(runDir, 'tasks'));
@@ -85,7 +85,7 @@ export async function initCommand(options: { create?: boolean; branch?: string }
     ensureDir(path.join(runDir, 'explore'));
     ensureDir(path.join(runDir, 'templates'));
     ensureDir(path.join(runDir, 'handoffs'));
-    
+
     // Handle plan resolution
     if (planResult.status === 'FOUND') {
       spinner.succeed(chalk.green(`Review run initialized: ${runId}`));
@@ -94,25 +94,34 @@ export async function initCommand(options: { create?: boolean; branch?: string }
     } else if (planResult.status === 'AMBIGUOUS') {
       spinner.warn(chalk.yellow(`Review run initialized: ${runId}`));
       console.log(chalk.gray(`  Branch: ${branch}`));
-      console.log(chalk.yellow('\n  Plan is AMBIGUOUS. Multiple candidates found:'));
+      console.log(
+        chalk.yellow('\n  Plan is AMBIGUOUS. Multiple candidates found:'),
+      );
       if (planResult.candidates) {
         planResult.candidates.forEach((c, i) => {
-          console.log(chalk.gray(`    ${i + 1}. ${c.path} (score: ${c.score})`));
+          console.log(
+            chalk.gray(`    ${i + 1}. ${c.path} (score: ${c.score})`),
+          );
         });
       }
-      console.log(chalk.gray('\n  Run: reviewctl plan --plan-path <path> to specify'));
+      console.log(
+        chalk.gray('\n  Run: reviewctl plan --plan-path <path> to specify'),
+      );
     } else {
       spinner.warn(chalk.yellow(`Review run initialized: ${runId}`));
       console.log(chalk.gray(`  Branch: ${branch}`));
       console.log(chalk.yellow('\n  Plan is MISSING. No matching plan found.'));
-      console.log(chalk.gray('  Run: reviewctl plan --plan-path <path> to specify'));
+      console.log(
+        chalk.gray('  Run: reviewctl plan --plan-path <path> to specify'),
+      );
     }
-    
+
     console.log(chalk.gray(`\n  Next: reviewctl explore context`));
-    
   } catch (error) {
     spinner.fail(chalk.red('Failed to initialize review run'));
-    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+    console.error(
+      chalk.red(error instanceof Error ? error.message : String(error)),
+    );
     process.exit(1);
   }
 }

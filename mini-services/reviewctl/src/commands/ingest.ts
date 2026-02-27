@@ -1,7 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import chalk from 'chalk';
-import fs from 'fs';
 import ora from 'ora';
-import path from 'path';
 import { AGENT_NAMES, type AgentName } from '../lib/constants.js';
 import {
   computeHash,
@@ -105,8 +105,8 @@ export async function ingestCommand(options: {
       );
     } else {
       spinner.fail('Must specify --agent <name> or --static <tool>');
-      console.log(chalk.gray('\n  Agents: ' + AGENT_NAMES.join(', ')));
-      console.log(chalk.gray('  Statics: ' + STATIC_TOOLS.join(', ')));
+      console.log(chalk.gray(`\n  Agents: ${AGENT_NAMES.join(', ')}`));
+      console.log(chalk.gray(`  Statics: ${STATIC_TOOLS.join(', ')}`));
       process.exit(1);
     }
   } catch (error) {
@@ -154,7 +154,7 @@ async function ingestAgentReport(
   if (!isValidName(sanitizedAgent)) {
     spinner.fail(`Invalid agent name: ${agentName}`);
     console.log(chalk.gray('  Name must match pattern: [a-z0-9-]+'));
-    console.log(chalk.gray('  Valid agents: ' + AGENT_NAMES.join(', ')));
+    console.log(chalk.gray(`  Valid agents: ${AGENT_NAMES.join(', ')}`));
     process.exit(1);
   }
 
@@ -317,7 +317,7 @@ async function ingestStaticReport(
   if (!isValidName(sanitizedTool)) {
     spinner.fail(`Invalid static tool name: ${toolName}`);
     console.log(chalk.gray('  Name must match pattern: [a-z0-9-]+'));
-    console.log(chalk.gray('  Valid tools: ' + STATIC_TOOLS.join(', ')));
+    console.log(chalk.gray(`  Valid tools: ${STATIC_TOOLS.join(', ')}`));
     process.exit(1);
   }
 
@@ -416,9 +416,10 @@ function readStdin(): Promise<string> {
     process.stdin.setEncoding('utf-8');
 
     process.stdin.on('readable', () => {
-      let chunk;
-      while ((chunk = process.stdin.read()) !== null) {
+      let chunk: string | null = process.stdin.read() as string | null;
+      while (chunk !== null) {
         data += chunk;
+        chunk = process.stdin.read() as string | null;
       }
     });
 
@@ -709,7 +710,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 }
 
 function checkCompletionStatus(
-  runId: string,
+  _runId: string,
   runDir: string,
 ): {
   completed: number;
@@ -717,7 +718,7 @@ function checkCompletionStatus(
   missing: string[];
   invalid: string[];
 } {
-  const reportsDir = path.join(runDir, 'reports');
+  const _reportsDir = path.join(runDir, 'reports');
   const tasksDir = path.join(runDir, 'tasks');
   const planJson = loadPlanJson(runDir);
 

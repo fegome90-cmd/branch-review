@@ -1,8 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import chalk from 'chalk';
-import fs from 'fs';
 import ora from 'ora';
-import path from 'path';
-import { FinalResult, Verdict } from '../lib/constants.js';
+import type { FinalResult, Verdict } from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
 import {
   getCurrentRun,
@@ -168,7 +168,7 @@ export async function verdictCommand(options: {
     spinner.succeed(chalk.green('Verdict generated'));
 
     if (!options.json) {
-      console.log('\n' + chalk.bold('═'.repeat(50)));
+      console.log(`\n${chalk.bold('═'.repeat(50))}`);
       if (verdict === 'PASS') {
         console.log(chalk.bold(`  VERDICT: ${chalk.green(verdict)}`));
       } else {
@@ -377,7 +377,9 @@ function evaluateRequiredStatics(
 
   return {
     required,
-    blocking: required.filter((item) => item.status !== 'PASS' && item.status !== 'SKIP'),
+    blocking: required.filter(
+      (item) => item.status !== 'PASS' && item.status !== 'SKIP',
+    ),
   };
 }
 
@@ -413,10 +415,10 @@ interface AggregatedResults {
 }
 
 function aggregateReports(
-  reportsDir: string,
+  _reportsDir: string,
   tasksDir: string,
   staticsDir: string,
-  run: any,
+  _run: any,
 ): AggregatedResults {
   const result: AggregatedResults = {
     p0Total: 0,
@@ -477,7 +479,7 @@ function aggregateReports(
             }
           }
         }
-      } catch (e) {
+      } catch (_e) {
         result.agents[agent] = { p0: 0, p1: 0, p2: 0, status: 'error' };
       }
     } else {
@@ -508,7 +510,7 @@ function aggregateReports(
           issues,
           status: status.status || 'unknown',
         };
-      } catch (e) {
+      } catch (_e) {
         result.statics[toolName] = { issues: 0, status: 'error' };
       }
     }
@@ -535,7 +537,7 @@ function generateFinalMd(
   staticGate: StaticGateEvaluation,
 ): string {
   const timestamp = new Date().toISOString();
-  const diffStats = getDiffStats();
+  const _diffStats = getDiffStats();
 
   let md = `# Final Review Report
 
@@ -653,7 +655,7 @@ ${
     for (let i = 0; i < aggregated.topP0Findings.length; i++) {
       const finding = aggregated.topP0Findings[i];
       md += `### P0-${i + 1}: ${finding.title} (from ${finding.agent})
-- **Location**: \`${finding.location?.file || 'Unknown'}${finding.location?.line_start ? ':' + finding.location.line_start : ''}\`
+- **Location**: \`${finding.location?.file || 'Unknown'}${finding.location?.line_start ? `:${finding.location.line_start}` : ''}\`
 - **Description**: ${finding.description}
 - **Fix**: ${finding.fix_suggestion || 'Review and fix'}
 
@@ -672,7 +674,7 @@ ${
     for (let i = 0; i < topP1.length; i++) {
       const finding = topP1[i];
       md += `### P1-${i + 1}: ${finding.title} (from ${finding.agent})
-- **Location**: \`${finding.location?.file || 'Unknown'}${finding.location?.line_start ? ':' + finding.location.line_start : ''}\`
+- **Location**: \`${finding.location?.file || 'Unknown'}${finding.location?.line_start ? `:${finding.location.line_start}` : ''}\`
 - **Description**: ${finding.description}
 - **Fix**: ${finding.fix_suggestion || 'Review and improve'}
 

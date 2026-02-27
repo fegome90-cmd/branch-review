@@ -1,20 +1,22 @@
 #!/usr/bin/env bun
-import { Command } from 'commander';
 import chalk from 'chalk';
-import { initCommand } from './commands/init.js';
+import { Command } from 'commander';
+import { cleanupCommand } from './commands/cleanup.js';
 import { exploreCommand } from './commands/explore.js';
+import { ingestCommand } from './commands/ingest.js';
+import { initCommand } from './commands/init.js';
+import { mergeCommand } from './commands/merge.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
-import { ingestCommand } from './commands/ingest.js';
 import { verdictCommand } from './commands/verdict.js';
-import { mergeCommand } from './commands/merge.js';
-import { cleanupCommand } from './commands/cleanup.js';
 
 const program = new Command();
 
 program
   .name('reviewctl')
-  .description('Code review orchestration CLI - Handoff Generator + Ingest mode')
+  .description(
+    'Code review orchestration CLI - Handoff Generator + Ingest mode',
+  )
   .version('1.0.0');
 
 // Init command
@@ -36,8 +38,16 @@ program
 program
   .command('plan')
   .description('Generate review plan based on exploration')
-  .option('--level <level>', 'Review level: auto|quick|thorough|comprehensive', 'auto')
-  .option('--type <type>', 'Review type: auto|python|sql|general|python+sql', 'auto')
+  .option(
+    '--level <level>',
+    'Review level: auto|quick|thorough|comprehensive',
+    'auto',
+  )
+  .option(
+    '--type <type>',
+    'Review type: auto|python|sql|general|python+sql',
+    'auto',
+  )
   .option('--plan-path <path>', 'Explicit plan path to use as SSOT')
   .action(planCommand);
 
