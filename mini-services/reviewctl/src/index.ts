@@ -8,6 +8,7 @@ import { initCommand } from './commands/init.js';
 import { mergeCommand } from './commands/merge.js';
 import { planCommand } from './commands/plan.js';
 import { runCommand } from './commands/run.js';
+import { statusCommand } from './commands/status.js';
 import { verdictCommand } from './commands/verdict.js';
 
 const program = new Command();
@@ -24,7 +25,9 @@ program
   .command('init')
   .description('Initialize a new review run on review/* branch')
   .option('--create', 'Create review branch if it does not exist')
-  .option('--branch <branch>', 'Specify branch name manually')
+  .option('--base <branch>', 'Base branch to compare against (default: auto)')
+  .option('--target <branch>', 'Target branch to review (default: HEAD)')
+  .option('--branch <branch>', 'Deprecated: use --target instead')
   .action(initCommand);
 
 // Explore command group
@@ -58,6 +61,7 @@ program
   .option('--max-agents <n>', 'Maximum number of agents', '3')
   .option('--timeout <mins>', 'Timeout in minutes', '8')
   .option('--no-plan', 'Run without Plan (requires explicit flag)')
+  .option('--allow-drift', 'Override drift protection for debug only')
   .action(runCommand);
 
 // Ingest command - accept pasted agent outputs
@@ -70,6 +74,15 @@ program
   .option('--extra', 'Allow agents/tools not in plan (stored but not counted)')
   .option('--overwrite', 'Overwrite existing report')
   .action(ingestCommand);
+
+// Status command
+program
+  .command('status')
+  .description('Show progress and status for review runs')
+  .option('--run-id <id>', 'Inspect a specific run by id')
+  .option('--last', 'Inspect the most recent run')
+  .option('--json', 'Output as JSON only')
+  .action(statusCommand);
 
 // Verdict command
 program

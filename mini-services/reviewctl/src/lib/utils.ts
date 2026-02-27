@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { format } from 'date-fns';
@@ -70,6 +71,27 @@ export function getCurrentSha(): string {
   }
 }
 
+// Resolve commit SHA for a branch/ref
+export function getShaForRef(ref: string): string {
+  try {
+    return execSync(`git rev-parse --short ${ref}`, { encoding: 'utf-8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+export function slugifyBranchName(branch: string): string {
+  return branch.replace(/[\/\s]+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+export function buildReviewBranchName(
+  baseBranch: string,
+  targetBranch: string,
+  shortSha: string,
+): string {
+  return `review/${slugifyBranchName(baseBranch)}--${slugifyBranchName(targetBranch)}--${shortSha}`;
+}
+
 // Get current run
 export function getCurrentRun(): RunMetadata | null {
   const runFile = path.join(REVIEW_RUNS_DIR, 'current.json');
@@ -81,6 +103,51 @@ export function getCurrentRun(): RunMetadata | null {
   } catch {
     return null;
   }
+}
+
+export function getRunById(runId: string): RunMetadata | null {
+  const runFile = path.join(REVIEW_RUNS_DIR, runId, 'run.json');
+  if (!fs.existsSync(runFile)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(runFile, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+export function getLastRun(): RunMetadata | null {
+  if (!fs.existsSync(REVIEW_RUNS_DIR)) {
+    return null;
+  }
+
+  const runDirs = fs
+    .readdirSync(REVIEW_RUNS_DIR)
+    .filter((entry) => entry.startsWith('run_'))
+    .map((entry) => ({
+      entry,
+      fullPath: path.join(REVIEW_RUNS_DIR, entry),
+    }))
+    .filter(({ fullPath }) => {
+      try {
+        return fs.statSync(fullPath).isDirectory();
+      } catch {
+        return false;
+      }
+    })
+    .sort((a, b) => {
+      const aMtime = fs.statSync(a.fullPath).mtimeMs;
+      const bMtime = fs.statSync(b.fullPath).mtimeMs;
+      return bMtime - aMtime;
+    });
+
+  if (runDirs.length === 0) {
+    return null;
+  }
+
+  return getRunById(runDirs[0].entry);
 }
 
 // Save current run
@@ -215,6 +282,22 @@ export function validatePreconditions(
       `Precondition failures:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
     );
   }
+}
+
+export function computeDigest(content: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(content)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+export function computeFileDigest(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  return computeDigest(fs.readFileSync(filePath, 'utf-8'));
 }
 
 // Format duration

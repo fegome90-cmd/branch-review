@@ -255,12 +255,12 @@ async function ingestAgentReport(
     );
     console.log(chalk.red('\n  Contract violations:'));
     for (const err of validation.errors) {
-      console.log(chalk.red(`    - ${err}`));
+      console.log(chalk.red(`    ERROR: ${err}`));
     }
     if (validation.warnings.length > 0) {
       console.log(chalk.yellow('\n  Warnings:'));
       for (const warn of validation.warnings) {
-        console.log(chalk.yellow(`    - ${warn}`));
+        console.log(chalk.yellow(`    WARN: ${warn}`));
       }
     }
     console.log(chalk.gray(`\n  Status: FAIL (not counted as complete)`));
@@ -276,7 +276,7 @@ async function ingestAgentReport(
   if (validation.warnings.length > 0) {
     console.log(chalk.yellow('\n  Warnings:'));
     for (const warn of validation.warnings) {
-      console.log(chalk.yellow(`    - ${warn}`));
+      console.log(chalk.yellow(`    WARN: ${warn}`));
     }
   }
 
@@ -386,6 +386,8 @@ async function ingestStaticReport(
       pytestSummary === null
         ? {
             issues: staticSummary.issues,
+            blocking_issues: staticSummary.blockingIssues ?? null,
+            warning_issues: staticSummary.warningIssues ?? null,
             reason: staticSummary.reason,
           }
         : {

@@ -60,11 +60,21 @@ export interface RunMetadata {
   run_id: string;
   branch: string;
   base_branch: string;
+  target_branch?: string;
+  base_sha?: string;
+  target_sha?: string;
   created_at: string;
   status: RunStatus;
   plan_status: PlanStatus;
   plan_path?: string;
   drift_status?: DriftStatus;
+  head_sha_at_explore?: string;
+  head_sha_at_plan?: string;
+  context_digest?: string;
+  diff_digest?: string;
+  plan_digest?: string;
+  drift_override_used?: boolean;
+  warnings_total?: number;
 }
 
 export interface Finding {
@@ -106,6 +116,7 @@ export interface AgentResult {
 export interface FinalResult {
   run_id: string;
   branch: string;
+  target_branch?: string;
   base_branch: string;
   timestamp: string;
   verdict: Verdict;
@@ -113,6 +124,7 @@ export interface FinalResult {
     p0_total: number;
     p1_total: number;
     p2_total: number;
+    warnings_total: number;
     files_changed: number;
     lines_added: number;
     lines_removed: number;
@@ -122,6 +134,7 @@ export interface FinalResult {
     { p0: number; p1: number; p2: number; status: string }
   >;
   statics: Record<string, { issues: number; status: string }>;
+  warnings_by_agent?: Record<string, number>;
   static_gate: {
     required: Array<{ status: string }>;
     blocking: Array<{ status: string }>;
@@ -131,6 +144,7 @@ export interface FinalResult {
   drift: {
     status: DriftStatus;
     plan_source: string | null;
+    override_used?: boolean;
   };
   artifacts: {
     context: string;

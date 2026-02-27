@@ -34,15 +34,44 @@
 For review orchestration tasks, use the canonical path A (no shortcuts):
 
 1. `bun mini-services/reviewctl/src/index.ts help`
-2. `bun mini-services/reviewctl/src/index.ts init` (or `init --create`)
+2. `bun mini-services/reviewctl/src/index.ts init --create --base main --target <branch>`
+   - `--base`: base branch to compare against (default: auto-detect main/master/develop)
+   - `--target`: branch to review (default: HEAD/current branch)
+   - `--branch`: deprecated (use `--target` instead)
 3. `bun mini-services/reviewctl/src/index.ts explore context`
 4. `bun mini-services/reviewctl/src/index.ts explore diff`
 5. `bun mini-services/reviewctl/src/index.ts plan`
-6. `bun mini-services/reviewctl/src/index.ts run` (use `--no-plan` only when explicitly needed)
-7. `bun mini-services/reviewctl/src/index.ts ingest --agent <name> --input <file>`
-8. `bun mini-services/reviewctl/src/index.ts verdict`
+6. `bun mini-services/reviewctl/src/index.ts run`
+   - Fails if drift detected (HEAD or digests changed since explore/plan)
+   - Use `--allow-drift` only for debug (leaves `DRIFT OVERRIDE USED` trace)
+7. `bun mini-services/reviewctl/src/index.ts status [--last|--run-id <id>] [--json]`
+   - Show progress: explore/plan/agents/statics/drift/warnings/verdict
+8. `bun mini-services/reviewctl/src/index.ts ingest --agent <name> --input <file>`
+   - Reports with missing recommended sections generate WARN (non-blocking)
+   - Reports with missing required sections generate ERROR (blocking)
+9. `bun mini-services/reviewctl/src/index.ts verdict`
+   - Includes warnings count and breakdown by agent
+   - Shows `DRIFT OVERRIDE USED: YES/NO` in final report
 
 Why: `run` generates handoff requests (`REQUEST_*.md`) and task status artifacts, enabling reproducible multi-agent reviews and consistent auditability.
+
+### Drift protection
+
+The workflow tracks digests and HEAD SHAs to detect drift:
+
+- `explore context`: records `head_sha_at_explore`, `context_digest`
+- `explore diff`: records `base_sha`, `target_sha`, `diff_digest`
+- `plan`: records `head_sha_at_plan`, `plan_digest`
+- `run`: validates drift before generating requests
+
+If drift is detected, `run` fails with instructions to re-run explore/plan. Use `--allow-drift` only for debugging (audit trail is preserved).
+
+### Branch naming
+
+Review branches follow: `review/<base>--<target>--<shortsha>`
+
+- Example: `review/main--feat_api-discovery--a0c1535`
+- Slashes in branch names are replaced with underscores for safety
 
 ## PR comments workflow (gh wrapper)
 

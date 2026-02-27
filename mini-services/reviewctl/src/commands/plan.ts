@@ -11,8 +11,10 @@ import {
   determineThirdAgent,
 } from '../lib/stack-detector.js';
 import {
+  computeDigest,
   getChangedFiles,
   getCurrentRun,
+  getCurrentSha,
   getDiffStats,
   getRunDir,
   saveCurrentRun,
@@ -119,9 +121,13 @@ export async function planCommand(options: {
       JSON.stringify(planJson, null, 2),
     );
 
-    // Update run status
+    // Update run status + digest snapshots
     run.status = 'planning';
+    run.head_sha_at_plan = getCurrentSha();
+    run.plan_digest = computeDigest(planContent);
     saveCurrentRun(run);
+
+    fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(run, null, 2));
 
     spinner.succeed(chalk.green('Review plan generated'));
 
