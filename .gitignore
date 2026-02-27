@@ -52,3 +52,6 @@ server.log
 /_ctx/pr_comments/
 # Skills directory
 /skills/
+# Pi and review artifacts
+.pi/
+_ctx/
