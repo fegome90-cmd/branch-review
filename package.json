@@ -28,8 +28,10 @@
     "flow:commit": "bash scripts/git-flow-commit.sh",
     "flow:prepr": "bash scripts/run-pre-pr.sh",
     "flow:pr": "bash scripts/pr-create.sh",
+    "flow:pr-comments": "bash scripts/flow-pr-comments.sh",
     "flow:postpr-learning": "bash scripts/post-pr-learning.sh",
     "flow:merge": "bash scripts/flow-merge.sh",
+    "reviewctl": "bun mini-services/reviewctl/src/index.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -123,10 +125,10 @@
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": [
       "eslint --fix",
-      "biome check --write --files-ignore-unknown=true"
+      "biome check --write --files-ignore-unknown=true --no-errors-on-unmatched"
     ],
     "*.{json,jsonc}": [
-      "biome check --write --files-ignore-unknown=true"
+      "biome check --write --files-ignore-unknown=true --no-errors-on-unmatched"
     ],
     "*.{md,css,scss,yml,yaml}": [
       "prettier --write"

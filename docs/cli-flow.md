@@ -41,6 +41,8 @@ Use this wrapper to ingest CodeRabbit/Copilot/GitHub comments into local artifac
   - `bun run flow:pr-comments -- todo --pr <number>`
 - Reply to an inline PR comment:
   - `bun run flow:pr-comments -- reply --comment-id <id> --body "..." [--repo <owner/repo>]`
+- Auto-reply in batch (explicit opt-in):
+  - `bun run flow:pr-comments -- reply --apply --from <todo.md|replies.json> [--repo <owner/repo>] [--dry-run] [--limit <n>]`
 
 Artifacts are written to `_ctx/pr_comments/pr-<number>/`:
 
@@ -54,12 +56,11 @@ Note: `_ctx/pr_comments/pr-<number>/` artifacts are local/generated workflow out
 
 ## Post-PR learning (auto + manual)
 
-After PR creation (or PR detection on the current branch), the flow runs a learning pass that extracts reusable decision patterns as skills.
+After PR creation, the flow runs a best-effort post-PR learning hook.
 
 - Auto trigger: `bun run flow:pr -- ...`
 - Manual trigger: `bun run flow:postpr-learning`
-- Config: `scripts/post-pr-learning.config.json`
-- Output directory: `skills/learned/<skill-id>/`
-  - `SKILL.md`
-  - `provenance.json`
-- Latest run summary: `skills/learned/_last-post-pr-learning.md`
+- Current behavior:
+  - writes `skills/learned/_last-post-pr-learning.md`
+  - optionally executes `scripts/post-pr-learning.local.sh` if present
+- Failure policy: non-blocking (warnings only) so PR creation is not interrupted.

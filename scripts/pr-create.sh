@@ -14,4 +14,9 @@ bash .husky/pre-pr
 
 gh auth status >/dev/null
 
-gh pr create --title "$TITLE" --body "$BODY" "$@"
+PR_URL="$(gh pr create --title "$TITLE" --body "$BODY" "$@")"
+echo "$PR_URL"
+
+if ! bash scripts/post-pr-learning.sh --pr-url "$PR_URL"; then
+  echo "[flow:pr] WARN: post-PR learning failed (best-effort)" >&2
+fi
