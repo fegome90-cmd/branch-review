@@ -10,7 +10,7 @@ http://localhost:3001
 
 ## Authentication
 
-`/api/review/info` es público. El resto de endpoints bajo `/api/review/*` requieren autenticación:
+`/api/review/info` es público. `/api/review/token` (POST/DELETE) también es accesible sin token para bootstrap/clear de cookie. El resto de endpoints bajo `/api/review/*` requieren autenticación:
 
 **Método 1: Header**
 
@@ -272,11 +272,12 @@ curl -X DELETE http://localhost:3001/api/review/token
 
 ## Rate Limits
 
-| Tipo              | Límite                | Ventana     |
-| ----------------- | --------------------- | ----------- |
-| Authenticated     | Sin límite específico | -           |
-| Unauthenticated   | 30 requests           | 60 segundos |
-| Command execution | 10 requests           | 60 segundos |
+| Tipo                               | Límite                | Ventana     | Scope                                    |
+| ---------------------------------- | --------------------- | ----------- | ---------------------------------------- |
+| Authenticated                      | Sin límite específico | -           | -                                        |
+| Unauthenticated (default por path) | 30 requests           | 60 segundos | per-IP + path                            |
+| `/api/review/info`                 | 100 requests          | 60 segundos | per-IP + path                            |
+| Command execution                  | 10 requests           | 60 segundos | per-clientId (token si existe, si no IP) |
 
 ---
 
@@ -313,8 +314,9 @@ curl -X DELETE http://localhost:3001/api/review/token
 
 ## Notas para Agentes
 
-1. **Siempre** incluir `X-Review-Token` header
-2. **Verificar** `error.code` antes de continuar
-3. **Reintentar** con backoff exponencial en 429/503
-4. **Esperar** entre comandos (evitar 409 COMMAND_IN_PROGRESS)
-5. **Timeout máximo**: 120 segundos por comando
+1. Para endpoints protegidos (`/run`, `/state`, `/final`, `/command`) incluir `X-Review-Token`.
+2. Endpoints públicos: `/api/review/info` y `/api/review/token` (POST/DELETE).
+3. **Verificar** `error.code` antes de continuar.
+4. **Reintentar** con backoff exponencial en 429/503.
+5. **Esperar** entre comandos (evitar 409 COMMAND_IN_PROGRESS).
+6. **Timeout máximo**: 120 segundos por comando.
