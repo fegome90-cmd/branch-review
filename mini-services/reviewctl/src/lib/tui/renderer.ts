@@ -5,7 +5,7 @@ import type { PhaseStatus, RunSnapshot } from './types.js';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-// ANSI color codes (used sparingly for status only)
+// ANSI codes
 const ANSI = {
   reset: '\x1b[0m',
   dim: '\x1b[2m',
@@ -14,6 +14,8 @@ const ANSI = {
   red: '\x1b[31m',
   yellow: '\x1b[33m',
   cyan: '\x1b[36m',
+  blue: '\x1b[34m',
+  reverse: '\x1b[7m',
 };
 
 function phaseBadge(
@@ -49,6 +51,31 @@ function formatTimestamp(): string {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+/**
+ * Build a horizontal progress bar.
+ * Uses block characters for smooth visual progress.
+ */
+function progressBar(
+  current: number,
+  total: number,
+  width: number,
+  opts?: { doneColor?: string; pendingColor?: string },
+): string {
+  if (total === 0) {
+    return ANSI.dim + '░'.repeat(width) + ANSI.reset;
+  }
+
+  const doneColor = opts?.doneColor ?? ANSI.green;
+  const pendingColor = opts?.pendingColor ?? ANSI.dim;
+  const filled = Math.round((current / total) * width);
+  const empty = width - filled;
+
+  const done = doneColor + '█'.repeat(Math.max(0, filled)) + ANSI.reset;
+  const pending = pendingColor + '░'.repeat(Math.max(0, empty)) + ANSI.reset;
+
+  return done + pending;
 }
 
 /**
@@ -116,14 +143,41 @@ export class AlternateScreenRenderer {
     }
     lines.push('');
 
-    // Metrics section - side by side
-    const tasksLabel = 'tasks';
-    const staticsLabel = 'statics';
-    const tasksValue = `pending:${snapshot.taskCounts.pending} done:${snapshot.taskCounts.done} fail:${snapshot.taskCounts.failed}`;
-    const staticsValue = `pending:${snapshot.staticCounts.pending} pass:${snapshot.staticCounts.pass} fail:${snapshot.staticCounts.fail}`;
+    // Metrics with progress bars
+    const barWidth = 24;
 
-    lines.push(`  ${ANSI.dim}${tasksLabel}${ANSI.reset}   ${tasksValue}`);
-    lines.push(`  ${ANSI.dim}${staticsLabel}${ANSI.reset} ${staticsValue}`);
+    // Tasks progress
+    const tasksTotal =
+      snapshot.taskCounts.pending +
+      snapshot.taskCounts.done +
+      snapshot.taskCounts.failed;
+    const tasksDone = snapshot.taskCounts.done + snapshot.taskCounts.failed;
+    const tasksBar = progressBar(tasksDone, tasksTotal, barWidth, {
+      doneColor: ANSI.green,
+    });
+    const tasksStats = `${ANSI.dim}pending:${ANSI.reset} ${snapshot.taskCounts.pending}  ${ANSI.dim}done:${ANSI.reset} ${snapshot.taskCounts.done}  ${snapshot.taskCounts.failed > 0 ? ANSI.red : ANSI.dim}fail:${ANSI.reset} ${snapshot.taskCounts.failed}`;
+
+    lines.push(`  ${ANSI.dim}tasks${ANSI.reset}    ${tasksBar}`);
+    lines.push(`           ${tasksStats}`);
+    lines.push('');
+
+    // Statics progress
+    const staticsTotal =
+      snapshot.staticCounts.pending +
+      snapshot.staticCounts.pass +
+      snapshot.staticCounts.fail +
+      snapshot.staticCounts.skip;
+    const staticsDone =
+      snapshot.staticCounts.pass +
+      snapshot.staticCounts.fail +
+      snapshot.staticCounts.skip;
+    const staticsBar = progressBar(staticsDone, staticsTotal, barWidth, {
+      doneColor: ANSI.blue,
+    });
+    const staticsStats = `${ANSI.dim}pending:${ANSI.reset} ${snapshot.staticCounts.pending}  ${ANSI.green}pass:${ANSI.reset} ${snapshot.staticCounts.pass}  ${snapshot.taskCounts.failed > 0 ? ANSI.red : ANSI.dim}fail:${ANSI.reset} ${snapshot.staticCounts.fail}  ${ANSI.dim}skip:${ANSI.reset} ${snapshot.staticCounts.skip}`;
+
+    lines.push(`  ${ANSI.dim}statics${ANSI.reset}  ${staticsBar}`);
+    lines.push(`           ${staticsStats}`);
     lines.push('');
 
     // Footer - keyboard shortcuts
@@ -131,7 +185,7 @@ export class AlternateScreenRenderer {
       `  ${ANSI.dim}────────────────────────────────────────────────────────────────────${ANSI.reset}`,
     );
     lines.push(
-      `  ${ANSI.dim}ctrl+c${ANSI.reset} abort  ${ANSI.dim}q${ANSI.reset} quit`,
+      `  ${ANSI.dim}ctrl+c${ANSI.reset} abort  ${ANSI.dim}q${ANSI.reset} quit  ${ANSI.dim}r${ANSI.reset} refresh`,
     );
 
     // Render
@@ -169,11 +223,17 @@ export class AlternateScreenRenderer {
     lines.push(`  ${ANSI.dim}elapsed:${ANSI.reset} ${elapsed}`);
     lines.push('');
 
-    // Final counts
+    // Final counts with visual summary
     const totalDone = snapshot.taskCounts.done + snapshot.staticCounts.pass;
     const totalFail = snapshot.taskCounts.failed + snapshot.staticCounts.fail;
+
+    const summaryBar = progressBar(totalDone, totalDone + totalFail, 32, {
+      doneColor: totalFail > 0 ? ANSI.yellow : ANSI.green,
+    });
+
+    lines.push(`  ${ANSI.dim}results${ANSI.reset}  ${summaryBar}`);
     lines.push(
-      `  ${ANSI.dim}results:${ANSI.reset}  ${ANSI.green}${totalDone} passed${ANSI.reset} ${ANSI.dim}/${ANSI.reset} ${totalFail > 0 ? ANSI.red : ANSI.dim}${totalFail} failed${ANSI.reset}`,
+      `          ${ANSI.green}${totalDone} passed${ANSI.reset} ${ANSI.dim}/${ANSI.reset} ${totalFail > 0 ? ANSI.red : ANSI.dim}${totalFail} failed${ANSI.reset}`,
     );
     lines.push('');
 

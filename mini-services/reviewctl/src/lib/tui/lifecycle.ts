@@ -35,6 +35,13 @@ export function createTerminalLifecycle(options: {
     cleanup();
   };
 
+  const requestAbort = (signal: NodeJS.Signals = 'SIGINT') => {
+    if (abortSignal) {
+      return;
+    }
+    handleSignal(signal);
+  };
+
   const onSigInt = () => handleSignal('SIGINT');
   const onSigTerm = () => handleSignal('SIGTERM');
 
@@ -55,6 +62,7 @@ export function createTerminalLifecycle(options: {
   return {
     cleanup,
     dispose,
+    requestAbort,
     getAbortSignal: () => abortSignal,
     throwIfAborted: () => {
       if (abortSignal) {
