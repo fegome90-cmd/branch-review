@@ -2,15 +2,20 @@ import chalk from 'chalk';
 import fs from 'fs';
 import ora from 'ora';
 import path from 'path';
-import { AGENT_NAMES, AgentName } from '../lib/constants.js';
+import { AGENT_NAMES, type AgentName } from '../lib/constants.js';
 import {
   computeHash,
   isValidName,
   sanitizeName,
-  ValidationResult,
   validateReport,
 } from '../lib/contract-validator.js';
-import { getCurrentRun, getRunDir, saveCurrentRun } from '../lib/utils.js';
+import {
+  parseBiomeSummary,
+  parseRuffSummary,
+  readCount,
+  type StaticSummary,
+} from '../lib/static-parsers.js';
+import { getCurrentRun, getRunDir } from '../lib/utils.js';
 
 // Static tools configuration
 const STATIC_TOOLS = ['biome', 'ruff', 'pyrefly', 'pytest', 'coderabbit'];
@@ -464,14 +469,6 @@ function readStdin(): Promise<string> {
   });
 }
 
-type StaticReviewStatus = 'PASS' | 'FAIL' | 'UNKNOWN' | 'SKIP';
-
-type StaticSummary = {
-  status: StaticReviewStatus;
-  reason: string;
-  issues: number;
-};
-
 type PytestSummary = {
   status: 'PASS' | 'FAIL' | 'UNKNOWN';
   passed: number;
@@ -494,98 +491,6 @@ function parseStaticSummary(toolName: string, content: string): StaticSummary {
   }
 
   return parseGenericStaticSummary(content, toolName);
-}
-
-function parseBiomeSummary(content: string): StaticSummary {
-  const normalized = content.toLowerCase();
-
-  if (content.trim().length === 0) {
-    return {
-      status: 'PASS',
-      reason: 'Biome output is empty (no findings reported)',
-      issues: 0,
-    };
-  }
-
-  if (/no files were processed/i.test(content)) {
-    return {
-      status: 'SKIP',
-      reason: 'No files were processed by Biome',
-      issues: 0,
-    };
-  }
-
-  const errors = readCount(content, /Found\s+(\d+)\s+errors?/i);
-  const warnings = readCount(content, /Found\s+(\d+)\s+warnings?/i);
-  const issues = errors + warnings;
-
-  if (errors > 0 || /some errors were emitted|\bcheck\s+×/i.test(normalized)) {
-    return {
-      status: 'FAIL',
-      reason: `Biome reported ${issues > 0 ? issues : 1} issue(s)`,
-      issues: issues > 0 ? issues : 1,
-    };
-  }
-
-  if (
-    /found\s+0\s+errors?/i.test(content) ||
-    /checked\s+\d+\s+files/i.test(content)
-  ) {
-    return {
-      status: 'PASS',
-      reason: 'Biome output parsed successfully',
-      issues: 0,
-    };
-  }
-
-  return {
-    status: 'UNKNOWN',
-    reason: 'Could not determine Biome result conclusively',
-    issues,
-  };
-}
-
-function parseRuffSummary(content: string): StaticSummary {
-  if (/warning:\s+No Python files found/i.test(content)) {
-    return {
-      status: 'SKIP',
-      reason: 'Ruff not applicable: no Python files found',
-      issues: 0,
-    };
-  }
-
-  if (/All checks passed!/i.test(content)) {
-    return {
-      status: 'PASS',
-      reason: 'Ruff reported all checks passed',
-      issues: 0,
-    };
-  }
-
-  const errors = readCount(content, /Found\s+(\d+)\s+errors?/i);
-  const hasRuleFindings = /^[^\n:]+:\d+:\d+:\s+[A-Z]\d+/m.test(content);
-
-  if (errors > 0 || hasRuleFindings) {
-    return {
-      status: 'FAIL',
-      reason: `Ruff reported ${errors > 0 ? errors : 1} issue(s)`,
-      issues: errors > 0 ? errors : 1,
-    };
-  }
-
-  if (content.trim().length === 0) {
-    return {
-      status: 'PASS',
-      reason: 'Ruff output is empty (no findings reported)',
-      issues: 0,
-    };
-  }
-
-  return {
-    status: 'UNKNOWN',
-    reason: 'Could not determine Ruff result conclusively',
-    issues: errors,
-  };
 }
 
 function parseGenericStaticSummary(
@@ -624,11 +529,6 @@ function parseGenericStaticSummary(
     reason: `Could not determine ${toolName} result conclusively`,
     issues,
   };
-}
-
-function readCount(content: string, pattern: RegExp): number {
-  const match = content.match(pattern);
-  return match ? Number(match[1]) : 0;
 }
 
 function parsePytestSummary(content: string): PytestSummary {
@@ -728,7 +628,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 
   // Extract P0 findings
   const p0Matches = content.match(
-    /(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
+    /(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:-]?\s*([^\n]+)/gi,
   );
   if (p0Matches) {
     result.findings.push(
@@ -736,7 +636,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
         id: `P0-${i + 1}`,
         priority: 'P0',
         title: m
-          .replace(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:\-]?\s*/, '')
+          .replace(/(?:####?\s*|Finding\s+)P0[-\d:]+\s*[:-]?\s*/, '')
           .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',
@@ -747,7 +647,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 
   // Extract P1 findings
   const p1Matches = content.match(
-    /(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
+    /(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:-]?\s*([^\n]+)/gi,
   );
   if (p1Matches) {
     result.findings.push(
@@ -755,7 +655,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
         id: `P1-${i + 1}`,
         priority: 'P1',
         title: m
-          .replace(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:\-]?\s*/, '')
+          .replace(/(?:####?\s*|Finding\s+)P1[-\d:]+\s*[:-]?\s*/, '')
           .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',
@@ -766,7 +666,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 
   // Extract P2 findings
   const p2Matches = content.match(
-    /(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*([^\n]+)/gi,
+    /(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:-]?\s*([^\n]+)/gi,
   );
   if (p2Matches) {
     result.findings.push(
@@ -774,7 +674,7 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
         id: `P2-${i + 1}`,
         priority: 'P2',
         title: m
-          .replace(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:\-]?\s*/, '')
+          .replace(/(?:####?\s*|Finding\s+)P2[-\d:]+\s*[:-]?\s*/, '')
           .trim(),
         location: { file: 'Unknown' },
         description: 'Extracted from report',

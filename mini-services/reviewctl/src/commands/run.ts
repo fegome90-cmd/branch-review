@@ -1,20 +1,39 @@
-import chalk from 'chalk';
-import fs from 'fs';
-import ora from 'ora';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
-  AgentName,
-  DEFAULT_TIMEOUT_MINS,
+  type AgentName,
   MAX_AGENTS,
-  REVIEW_RUNS_DIR,
+  type RunMetadata,
 } from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
+import { detectInteractiveTTY } from '../lib/tui/detection.js';
+import { runWithPlainOutput, runWithTUI } from '../lib/tui/run-modes.js';
+import type { WorkflowReporter } from '../lib/tui/types.js';
 import {
   getCurrentRun,
   getRunDir,
   saveCurrentRun,
   validatePreconditions,
 } from '../lib/utils.js';
+
+interface RunWorkflowResult {
+  runId: string;
+  agents: AgentName[];
+}
+
+/**
+ * Safe file write that throws a contextual error on failure.
+ * Used for critical writes where failure should halt the workflow with a clear message.
+ */
+function safeWriteSync(filePath: string, content: string): void {
+  try {
+    fs.writeFileSync(filePath, content);
+  } catch (error) {
+    throw new Error(
+      `Failed to write ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
 
 export async function runCommand(options: {
   backend?: string;
@@ -23,107 +42,173 @@ export async function runCommand(options: {
   noPlan?: boolean;
   plan?: boolean;
 }) {
-  const spinner = ora('Starting review run...').start();
+  const runner = detectInteractiveTTY(process.stdout, process.stderr)
+    ? runWithTUI
+    : runWithPlainOutput;
 
-  try {
-    // Validate preconditions
-    const preconditions: (
-      | 'review_branch'
-      | 'context'
-      | 'diff'
-      | 'plan_resolved'
-    )[] = ['review_branch', 'context', 'diff'];
-    const skipPlanPrecondition = options.noPlan || options.plan === false;
+  const result = await runner<RunWorkflowResult>({
+    commandName: 'run',
+    execute: (reporter) => executeRunWorkflow(options, reporter),
+  });
 
-    if (!skipPlanPrecondition) {
-      preconditions.push('plan_resolved');
-    }
-
-    validatePreconditions(preconditions);
-
-    const run = getCurrentRun();
-    if (!run) {
-      spinner.fail('No active review run. Run: reviewctl init');
-      process.exit(1);
-    }
-
-    // Check drift status
-    if (run.drift_status === 'DRIFT_CONFIRMED') {
-      spinner.fail(
-        'DRIFT_CONFIRMED blocks review run. Resolve drift issues first.',
-      );
-      process.exit(1);
-    }
-
-    // Parse options
-    const maxAgents = Math.min(
-      parseInt(options.maxAgents) || MAX_AGENTS,
-      MAX_AGENTS,
-    );
-    const timeoutMins = parseInt(options.timeout) || DEFAULT_TIMEOUT_MINS;
-
-    // Load plan
-    const runDir = getRunDir(run.run_id);
-    const planPath = path.join(runDir, 'plan.md');
-    const hasPlan = fs.existsSync(planPath);
-
-    if (!hasPlan && !skipPlanPrecondition) {
-      spinner.fail('Review plan not found. Run: reviewctl plan');
-      process.exit(1);
-    }
-
-    // Update run status
-    run.status = 'running';
-    saveCurrentRun(run);
-
-    // Parse agents from plan (plan.json is source of truth).
-    // Note: explicit --no-plan intentionally uses a minimal safe set, while
-    // resolveAgentsForRun() falls back to a fuller default that includes pr-test-analyzer.
-    const agents = hasPlan
-      ? resolveAgentsForRun(runDir, planPath, maxAgents)
-      : (['code-reviewer', 'code-simplifier'] as AgentName[]);
-
-    spinner.text = `Generating handoff requests for ${agents.length} agents...`;
-    if (!hasPlan) {
-      spinner.text =
-        'No plan found (--no-plan). Using default agents: code-reviewer, code-simplifier';
-    }
-
-    // Generate static analysis requests
-    await generateStaticsRequests(run.run_id, runDir);
-
-    // Generate agent handoff requests (NO SIMULATION)
-    generateAgentRequests(agents, run, runDir);
-
-    // Update run status
-    run.status = 'pending_ingest';
-    saveCurrentRun(run);
-
-    spinner.succeed(
-      chalk.green('Review run prepared - handoff requests generated'),
-    );
-
-    console.log(chalk.gray(`\n  Agents: ${agents.join(', ')}`));
+  if (result.exitCode === 0 && result.data) {
+    console.log(`  Agents: ${result.data.agents.join(', ')}`);
     console.log(
-      chalk.gray(
-        `  Requests: _ctx/review_runs/${run.run_id}/reports/REQUEST_*.md`,
-      ),
+      `  Requests: _ctx/review_runs/${result.data.runId}/reports/REQUEST_*.md`,
     );
     console.log(
-      chalk.gray(`  Tasks: _ctx/review_runs/${run.run_id}/tasks/*/status.json`),
+      `  Tasks: _ctx/review_runs/${result.data.runId}/tasks/*/status.json`,
     );
-    console.log(chalk.yellow(`\n  Next: Run agents externally, then:`));
-    console.log(
-      chalk.yellow(`    reviewctl ingest --agent <name> --input <report.md>`),
-    );
-    console.log(chalk.yellow(`    reviewctl verdict`));
-  } catch (error) {
-    spinner.fail(chalk.red('Review run failed'));
-    console.error(
-      chalk.red(error instanceof Error ? error.message : String(error)),
-    );
-    process.exit(1);
+    console.log('  Next: Run agents externally, then:');
+    console.log('    reviewctl ingest --agent <name> --input <report.md>');
+    console.log('    reviewctl verdict');
   }
+
+  process.exit(result.exitCode);
+}
+
+async function executeRunWorkflow(
+  options: {
+    maxAgents: string;
+    timeout: string;
+    noPlan?: boolean;
+    plan?: boolean;
+  },
+  reporter: WorkflowReporter,
+): Promise<RunWorkflowResult> {
+  reporter.setPhase({
+    key: 'preconditions',
+    label: 'Validating preconditions',
+    status: 'RUNNING',
+  });
+
+  const preconditions: (
+    | 'review_branch'
+    | 'context'
+    | 'diff'
+    | 'plan_resolved'
+  )[] = ['review_branch', 'context', 'diff'];
+
+  const skipPlanPrecondition = options.noPlan || options.plan === false;
+  if (!skipPlanPrecondition) {
+    preconditions.push('plan_resolved');
+  }
+
+  validatePreconditions(preconditions);
+  reporter.throwIfAborted();
+
+  reporter.setPhase({
+    key: 'preconditions',
+    label: 'Validating preconditions',
+    status: 'DONE',
+  });
+
+  reporter.setPhase({
+    key: 'prepare',
+    label: 'Preparing run context',
+    status: 'RUNNING',
+  });
+
+  const run = getCurrentRun();
+  if (!run) {
+    throw new Error('No active review run. Run: reviewctl init');
+  }
+
+  reporter.setRunMeta({
+    runId: run.run_id,
+    runDir: getRunDir(run.run_id),
+  });
+
+  if (run.drift_status === 'DRIFT_CONFIRMED') {
+    throw new Error(
+      'DRIFT_CONFIRMED blocks review run. Resolve drift issues first.',
+    );
+  }
+
+  const maxAgents = Math.max(
+    1,
+    Math.min(parseInt(options.maxAgents, 10) || MAX_AGENTS, MAX_AGENTS),
+  );
+
+  const runDir = getRunDir(run.run_id);
+  const planPath = path.join(runDir, 'plan.md');
+  const hasPlan = fs.existsSync(planPath);
+
+  if (!hasPlan && !skipPlanPrecondition) {
+    throw new Error('Review plan not found. Run: reviewctl plan');
+  }
+
+  run.status = 'running';
+  saveCurrentRun(run);
+
+  const agents = hasPlan
+    ? resolveAgentsForRun(runDir, planPath, maxAgents)
+    : (['code-reviewer', 'code-simplifier'] as AgentName[]);
+
+  const prepareDetail = hasPlan
+    ? `${agents.length} agents selected`
+    : 'No plan found (--no-plan), using safe defaults';
+
+  reporter.setPhase({
+    key: 'prepare',
+    label: 'Preparing run context',
+    status: 'DONE',
+    detail: prepareDetail,
+  });
+
+  reporter.throwIfAborted();
+
+  reporter.setPhase({
+    key: 'statics',
+    label: 'Generating static requests',
+    status: 'RUNNING',
+  });
+
+  await generateStaticsRequests(run.run_id, runDir);
+
+  reporter.setPhase({
+    key: 'statics',
+    label: 'Generating static requests',
+    status: 'DONE',
+  });
+
+  reporter.throwIfAborted();
+
+  reporter.setPhase({
+    key: 'agents',
+    label: 'Generating agent requests',
+    status: 'RUNNING',
+  });
+
+  generateAgentRequests(agents, run, runDir);
+
+  reporter.setPhase({
+    key: 'agents',
+    label: 'Generating agent requests',
+    status: 'DONE',
+  });
+
+  reporter.throwIfAborted();
+
+  reporter.setPhase({
+    key: 'finalize',
+    label: 'Finalizing run state',
+    status: 'RUNNING',
+  });
+
+  run.status = 'pending_ingest';
+  saveCurrentRun(run);
+
+  reporter.setPhase({
+    key: 'finalize',
+    label: 'Finalizing run state',
+    status: 'DONE',
+  });
+
+  return {
+    runId: run.run_id,
+    agents,
+  };
 }
 
 const VALID_AGENTS = new Set<AgentName>([
@@ -184,7 +269,7 @@ function resolveAgentsForRun(
 
 // Generate static analysis requests - DO NOT RUN, just create requests
 async function generateStaticsRequests(
-  runId: string,
+  _runId: string,
   runDir: string,
 ): Promise<void> {
   const staticsDir = path.join(runDir, 'statics');
@@ -275,14 +360,14 @@ async function generateStaticsRequests(
         isRequired,
         planReason,
       );
-      fs.writeFileSync(
+      safeWriteSync(
         path.join(reportsDir, `REQUEST_statics_${tool.name}.md`),
         requestContent,
       );
 
       // Mark as PENDING
       const statusPath = path.join(staticsDir, `${tool.name}_status.json`);
-      fs.writeFileSync(
+      safeWriteSync(
         statusPath,
         JSON.stringify(
           {
@@ -301,11 +386,11 @@ async function generateStaticsRequests(
       requestedTools.push(tool.name);
     } else {
       // SKIP - not in plan or no config
-      fs.writeFileSync(
+      safeWriteSync(
         path.join(staticsDir, `${tool.name}.md`),
-        `# ${tool.name} Analysis\n\nSKIP: ${configExists ? 'Not in plan' : tool.checkFile + ' not found'}`,
+        `# ${tool.name} Analysis\n\nSKIP: ${configExists ? 'Not in plan' : `${tool.checkFile} not found`}`,
       );
-      fs.writeFileSync(
+      safeWriteSync(
         path.join(staticsDir, `${tool.name}_status.json`),
         JSON.stringify(
           {
@@ -362,10 +447,7 @@ Each tool has a status file in \`statics/<tool>_status.json\`:
 ---
 _Generated by reviewctl_
 `;
-    fs.writeFileSync(
-      path.join(reportsDir, 'REQUEST_statics.md'),
-      combinedRequest,
-    );
+    safeWriteSync(path.join(reportsDir, 'REQUEST_statics.md'), combinedRequest);
   }
 }
 
@@ -422,7 +504,7 @@ _Generated by reviewctl_
 // Generate agent handoff requests - NO SIMULATION
 function generateAgentRequests(
   agents: AgentName[],
-  run: any,
+  run: RunMetadata,
   runDir: string,
 ): void {
   const reportsDir = path.join(runDir, 'reports');
@@ -444,14 +526,11 @@ function generateAgentRequests(
 
     // Generate handoff request
     const requestContent = generateAgentRequestMd(agent, run);
-    fs.writeFileSync(
-      path.join(reportsDir, `REQUEST_${agent}.md`),
-      requestContent,
-    );
+    safeWriteSync(path.join(reportsDir, `REQUEST_${agent}.md`), requestContent);
 
     // Write status = PENDING
     const statusPath = path.join(agentTaskDir, 'status.json');
-    fs.writeFileSync(
+    safeWriteSync(
       statusPath,
       JSON.stringify(
         {
@@ -467,11 +546,11 @@ function generateAgentRequests(
 
     // Write prompt for external agent to use
     const prompt = generateAgentPrompt(agent, run);
-    fs.writeFileSync(path.join(agentTaskDir, 'prompt.md'), prompt);
+    safeWriteSync(path.join(agentTaskDir, 'prompt.md'), prompt);
   }
 }
 
-function generateAgentRequestMd(agent: AgentName, run: any): string {
+function generateAgentRequestMd(agent: AgentName, run: RunMetadata): string {
   const mission = getAgentMission(agent);
   const timestamp = new Date().toISOString();
 
@@ -536,7 +615,7 @@ _Generated by reviewctl - Handoff Generator_
 `;
 }
 
-function generateAgentPrompt(agent: AgentName, run: any): string {
+function generateAgentPrompt(agent: AgentName, run: RunMetadata): string {
   return `## Context
 - **Run ID**: ${run.run_id}
 - **Branch**: ${run.branch}
