@@ -29,6 +29,21 @@
 9. Sync local main (done automatically by `flow:merge`, keep as fallback):
    - `git checkout main && git pull --ff-only`
 
+## reviewctl orchestration standard (mandatory)
+
+For review orchestration tasks, use the canonical path A (no shortcuts):
+
+1. `bun mini-services/reviewctl/src/index.ts help`
+2. `bun mini-services/reviewctl/src/index.ts init` (or `init --create`)
+3. `bun mini-services/reviewctl/src/index.ts explore context`
+4. `bun mini-services/reviewctl/src/index.ts explore diff`
+5. `bun mini-services/reviewctl/src/index.ts plan`
+6. `bun mini-services/reviewctl/src/index.ts run` (use `--no-plan` only when explicitly needed)
+7. `bun mini-services/reviewctl/src/index.ts ingest --agent <name> --input <file>`
+8. `bun mini-services/reviewctl/src/index.ts verdict`
+
+Why: `run` generates handoff requests (`REQUEST_*.md`) and task status artifacts, enabling reproducible multi-agent reviews and consistent auditability.
+
 ## PR comments workflow (gh wrapper)
 
 Use this wrapper to ingest CodeRabbit/Copilot/GitHub comments into local artifacts and a TODO file.

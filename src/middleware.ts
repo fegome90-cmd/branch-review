@@ -1,10 +1,10 @@
-import { timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 const REVIEW_TOKEN_COOKIE_NAME = 'review_api_token';
 const UNAUTH_RATE_LIMIT_WINDOW_MS = 60_000;
 const UNAUTH_RATE_LIMIT_MAX_REQUESTS = 30;
+const INFO_RATE_LIMIT_MAX_REQUESTS = 100;
 
 type RateBucket = {
   count: number;
@@ -12,6 +12,21 @@ type RateBucket = {
 };
 
 const unauthRateBuckets = new Map<string, RateBucket>();
+
+// Security: Constant-time token comparison (Edge Runtime compatible)
+// Uses XOR to compare all bytes regardless of match, preventing timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  const maxLen = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+
+  for (let i = 0; i < maxLen; i++) {
+    const aCode = i < a.length ? a.charCodeAt(i) : 0;
+    const bCode = i < b.length ? b.charCodeAt(i) : 0;
+    diff |= aCode ^ bCode;
+  }
+
+  return diff === 0;
+}
 
 // Security: Timing-safe token comparison for rate limit bypass
 function isValidToken(providedToken: string | null): boolean {
@@ -22,24 +37,13 @@ function isValidToken(providedToken: string | null): boolean {
     return false;
   }
 
-  const providedBuffer = Buffer.from(providedToken);
-  const currentBuffer = Buffer.from(currentToken);
-
-  // Only compare if lengths match (timing-safe)
-  if (providedBuffer.length === currentBuffer.length) {
-    if (timingSafeEqual(providedBuffer, currentBuffer)) {
-      return true;
-    }
+  if (timingSafeEqual(providedToken, currentToken)) {
+    return true;
   }
 
   // Check previous token if exists
-  if (previousToken) {
-    const previousBuffer = Buffer.from(previousToken);
-    if (providedBuffer.length === previousBuffer.length) {
-      if (timingSafeEqual(providedBuffer, previousBuffer)) {
-        return true;
-      }
-    }
+  if (previousToken && timingSafeEqual(providedToken, previousToken)) {
+    return true;
   }
 
   return false;
@@ -97,8 +101,18 @@ function isAuthenticatedReviewApiRequest(request: NextRequest) {
   return false;
 }
 
+function getUnauthRateLimitForPath(pathname: string) {
+  if (pathname === '/api/review/info') {
+    return INFO_RATE_LIMIT_MAX_REQUESTS;
+  }
+
+  return UNAUTH_RATE_LIMIT_MAX_REQUESTS;
+}
+
 function consumeUnauthRateLimit(request: NextRequest) {
-  const key = `${getClientIp(request)}:${request.nextUrl.pathname}`;
+  const pathname = request.nextUrl.pathname;
+  const maxRequests = getUnauthRateLimitForPath(pathname);
+  const key = `${getClientIp(request)}:${pathname}`;
   const now = Date.now();
   const existing = unauthRateBuckets.get(key);
 
@@ -107,21 +121,22 @@ function consumeUnauthRateLimit(request: NextRequest) {
     now - existing.windowStartMs >= UNAUTH_RATE_LIMIT_WINDOW_MS
   ) {
     unauthRateBuckets.set(key, { count: 1, windowStartMs: now });
-    return { allowed: true, remaining: UNAUTH_RATE_LIMIT_MAX_REQUESTS - 1 };
+    return { allowed: true, remaining: maxRequests - 1, limit: maxRequests };
   }
 
   existing.count += 1;
   unauthRateBuckets.set(key, existing);
 
   return {
-    allowed: existing.count <= UNAUTH_RATE_LIMIT_MAX_REQUESTS,
-    remaining: Math.max(UNAUTH_RATE_LIMIT_MAX_REQUESTS - existing.count, 0),
+    allowed: existing.count <= maxRequests,
+    remaining: Math.max(maxRequests - existing.count, 0),
+    limit: maxRequests,
   };
 }
 
 export function middleware(request: NextRequest) {
-  // Security: Rate limit unauthenticated requests to review API
-  // Now validates token instead of just checking presence (fixes CodeRabbit finding)
+  // Security: Rate limit unauthenticated requests to review API.
+  // Public endpoints bypass auth but still receive path-specific rate limits.
   if (!isAuthenticatedReviewApiRequest(request)) {
     const rate = consumeUnauthRateLimit(request);
     if (!rate.allowed) {
@@ -137,10 +152,7 @@ export function middleware(request: NextRequest) {
         { status: 429 },
       );
       response.headers.set('Retry-After', '60');
-      response.headers.set(
-        'X-RateLimit-Limit',
-        String(UNAUTH_RATE_LIMIT_MAX_REQUESTS),
-      );
+      response.headers.set('X-RateLimit-Limit', String(rate.limit));
       response.headers.set('X-RateLimit-Remaining', String(rate.remaining));
       return applySecurityHeaders(response);
     }

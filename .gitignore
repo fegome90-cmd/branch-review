@@ -55,3 +55,6 @@ server.log
 # Pi and review artifacts
 .pi/
 _ctx/
+
+# PM2 runtime
+.pm2/

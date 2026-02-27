@@ -29,6 +29,15 @@ Minimum gate before opening/merging PR:
 - `bun run lint`
 - `bun test`
 - `bun run flow:prepr` (defaults to `app` typecheck scope)
+- For review orchestration work: mandatory path A with `reviewctl run`
+  - `bun mini-services/reviewctl/src/index.ts help`
+  - `bun mini-services/reviewctl/src/index.ts init` (or `init --create`)
+  - `bun mini-services/reviewctl/src/index.ts explore context`
+  - `bun mini-services/reviewctl/src/index.ts explore diff`
+  - `bun mini-services/reviewctl/src/index.ts plan`
+  - `bun mini-services/reviewctl/src/index.ts run`
+  - `bun mini-services/reviewctl/src/index.ts ingest --agent <name> --input <file>`
+  - `bun mini-services/reviewctl/src/index.ts verdict`
 - Optional CI-parity static checks on changed files:
   - `BR_BIOME_SINCE=origin/main bash scripts/run-biome-check.sh`
   - `BR_DIFF_RANGE=origin/main...HEAD bash scripts/run-ruff-check.sh`
