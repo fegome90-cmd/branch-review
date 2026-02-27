@@ -18,15 +18,27 @@ REPO=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pr-url)
-      PR_URL="${2:-}"
+      if [[ -z "${2:-}" ]]; then
+        warn "--pr-url requires a value"
+        exit 2
+      fi
+      PR_URL="$2"
       shift 2
       ;;
     --pr)
-      PR_NUMBER="${2:-}"
+      if [[ -z "${2:-}" ]]; then
+        warn "--pr requires a value"
+        exit 2
+      fi
+      PR_NUMBER="$2"
       shift 2
       ;;
     --repo)
-      REPO="${2:-}"
+      if [[ -z "${2:-}" ]]; then
+        warn "--repo requires a value"
+        exit 2
+      fi
+      REPO="$2"
       shift 2
       ;;
     *)

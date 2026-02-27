@@ -90,13 +90,13 @@ fetch_artifacts() {
 
   mkdir -p "$dir"
 
-  if ! gh api "repos/${repo}/pulls/${pr}/comments" >"${dir}/inline-comments.json"; then
+  if ! gh api --paginate "repos/${repo}/pulls/${pr}/comments" | jq -s 'add // []' >"${dir}/inline-comments.json"; then
     fail 4 "Failed to fetch inline comments for PR #${pr}"
   fi
-  if ! gh api "repos/${repo}/pulls/${pr}/reviews" >"${dir}/reviews.json"; then
+  if ! gh api --paginate "repos/${repo}/pulls/${pr}/reviews" | jq -s 'add // []' >"${dir}/reviews.json"; then
     fail 4 "Failed to fetch reviews for PR #${pr}"
   fi
-  if ! gh api "repos/${repo}/issues/${pr}/comments" >"${dir}/issue-comments.json"; then
+  if ! gh api --paginate "repos/${repo}/issues/${pr}/comments" | jq -s 'add // []' >"${dir}/issue-comments.json"; then
     fail 4 "Failed to fetch issue comments for PR #${pr}"
   fi
 
@@ -299,6 +299,10 @@ main() {
         ;;
     esac
   done
+
+  if ! [[ "${limit:-0}" =~ ^[0-9]+$ ]]; then
+    fail 2 "--limit must be a non-negative integer"
+  fi
 
   [[ -n "$repo" ]] || repo="$(infer_repo)"
 

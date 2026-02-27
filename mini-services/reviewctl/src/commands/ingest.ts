@@ -16,6 +16,7 @@ import {
   type StaticSummary,
 } from '../lib/static-parsers.js';
 import { getCurrentRun, getRunDir } from '../lib/utils.js';
+import { normalizeAgentReviewStatus } from './verdict.js';
 
 // Static tools configuration
 const STATIC_TOOLS = ['biome', 'ruff', 'pyrefly', 'pytest', 'coderabbit'];
@@ -717,17 +718,12 @@ function checkCompletionStatus(
 
     try {
       const status = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
-      const normalizedStatus = String(status.status || '').toUpperCase();
+      const normalizedStatus = normalizeAgentReviewStatus(status.status);
 
-      if (
-        (normalizedStatus === 'DONE' || normalizedStatus === 'PASS') &&
-        status.validation?.valid
-      ) {
+      if (normalizedStatus === 'PASS' && status.validation?.valid) {
         completed++;
       } else if (
-        normalizedStatus === 'INVALID' ||
         normalizedStatus === 'FAIL' ||
-        normalizedStatus === 'FAILED' ||
         (status.validation && !status.validation.valid)
       ) {
         invalid.push(agent);
