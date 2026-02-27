@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -11,6 +12,38 @@ type RateBucket = {
 };
 
 const unauthRateBuckets = new Map<string, RateBucket>();
+
+// Security: Timing-safe token comparison for rate limit bypass
+function isValidToken(providedToken: string | null): boolean {
+  const currentToken = process.env.REVIEW_API_TOKEN;
+  const previousToken = process.env.REVIEW_API_TOKEN_PREVIOUS;
+
+  if (!currentToken || !providedToken) {
+    return false;
+  }
+
+  const providedBuffer = Buffer.from(providedToken);
+  const currentBuffer = Buffer.from(currentToken);
+
+  // Only compare if lengths match (timing-safe)
+  if (providedBuffer.length === currentBuffer.length) {
+    if (timingSafeEqual(providedBuffer, currentBuffer)) {
+      return true;
+    }
+  }
+
+  // Check previous token if exists
+  if (previousToken) {
+    const previousBuffer = Buffer.from(previousToken);
+    if (providedBuffer.length === previousBuffer.length) {
+      if (timingSafeEqual(providedBuffer, previousBuffer)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 function applySecurityHeaders(response: NextResponse) {
   response.headers.set(
@@ -42,17 +75,26 @@ function getClientIp(request: NextRequest) {
   );
 }
 
-function isUnauthenticatedReviewApiRequest(request: NextRequest) {
+// Security: Only return true if token is VALID (not just present)
+// This prevents rate limit bypass with fake tokens
+function isAuthenticatedReviewApiRequest(request: NextRequest) {
   if (!request.nextUrl.pathname.startsWith('/api/review/')) {
     return false;
   }
 
-  const hasHeaderToken = Boolean(request.headers.get('x-review-token'));
-  const hasCookieToken = Boolean(
-    request.cookies.get(REVIEW_TOKEN_COOKIE_NAME)?.value,
-  );
+  const headerToken = request.headers.get('x-review-token');
+  const cookieToken = request.cookies.get(REVIEW_TOKEN_COOKIE_NAME)?.value;
 
-  return !hasHeaderToken && !hasCookieToken;
+  // Check if either token source is valid
+  if (headerToken && isValidToken(headerToken)) {
+    return true;
+  }
+
+  if (cookieToken && isValidToken(cookieToken)) {
+    return true;
+  }
+
+  return false;
 }
 
 function consumeUnauthRateLimit(request: NextRequest) {
@@ -78,7 +120,9 @@ function consumeUnauthRateLimit(request: NextRequest) {
 }
 
 export function middleware(request: NextRequest) {
-  if (isUnauthenticatedReviewApiRequest(request)) {
+  // Security: Rate limit unauthenticated requests to review API
+  // Now validates token instead of just checking presence (fixes CodeRabbit finding)
+  if (!isAuthenticatedReviewApiRequest(request)) {
     const rate = consumeUnauthRateLimit(request);
     if (!rate.allowed) {
       const response = NextResponse.json(
@@ -105,6 +149,8 @@ export function middleware(request: NextRequest) {
   return applySecurityHeaders(NextResponse.next());
 }
 
+// Security: Narrowed matcher to /api/review/* as recommended by CodeRabbit
+// This avoids unintended side effects on other app routes
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|public/).*)'],
+  matcher: ['/api/review/:path*'],
 };

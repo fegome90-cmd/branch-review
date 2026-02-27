@@ -135,7 +135,11 @@ describe('GET /api/review/final', () => {
       '../..', // Multiple parents
       '../../../etc', // Deep traversal
       '/etc/passwd', // Absolute path
-      '..\\..', // Windows-style (if applicable)
+      '..\\..', // Windows-style
+      // CodeRabbit nitpick: additional payloads
+      '%252e%252e%252f', // Double URL-encoded ../
+      'test%00/../..', // Null byte injection
+      '..\\/..', // Mixed separator
     ];
 
     for (const runId of maliciousRunIds) {
@@ -151,10 +155,21 @@ describe('GET /api/review/final', () => {
 });
 
 describe('GET /api/review/run and /api/review/state', () => {
-  it('returns 401 when auth token is missing', async () => {
+  it('returns 401 when auth token is missing for /run', async () => {
     // biome-ignore lint/suspicious/noExplicitAny: testing with standard Request
     const request = new Request('http://localhost/api/review/run') as any;
     const response = await getRun(request);
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload.error.code).toBe('UNAUTHORIZED');
+  });
+
+  // CodeRabbit nitpick: parallel test for /state endpoint
+  it('returns 401 when auth token is missing for /state', async () => {
+    // biome-ignore lint/suspicious/noExplicitAny: testing with standard Request
+    const request = new Request('http://localhost/api/review/state') as any;
+    const response = await getState(request);
     const payload = await response.json();
 
     expect(response.status).toBe(401);
