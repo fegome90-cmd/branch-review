@@ -4,8 +4,6 @@ import type { PhaseStatus, RunSnapshot } from './types.js';
 // Terminal-native, monochrome base, color for meaning only
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const DEFAULT_TERMINAL_WIDTH = 80;
-const MIN_DIVIDER_WIDTH = 20;
 
 // ANSI color codes (used sparingly for status only)
 const ANSI = {
@@ -87,7 +85,6 @@ export class AlternateScreenRenderer {
     const frame = FRAMES[this.frameIndex % FRAMES.length];
     this.frameIndex += 1;
 
-    const width = process.stdout.columns || DEFAULT_TERMINAL_WIDTH;
     const elapsed = formatElapsed(Date.now() - snapshot.startedAt);
     const timestamp = formatTimestamp();
 
@@ -153,7 +150,6 @@ export class AlternateScreenRenderer {
       return;
     }
 
-    const width = process.stdout.columns || DEFAULT_TERMINAL_WIDTH;
     const elapsed = formatElapsed(Date.now() - snapshot.startedAt);
 
     const lines: string[] = [];

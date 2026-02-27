@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   type AgentName,
   MAX_AGENTS,
@@ -269,7 +269,7 @@ function resolveAgentsForRun(
 
 // Generate static analysis requests - DO NOT RUN, just create requests
 async function generateStaticsRequests(
-  runId: string,
+  _runId: string,
   runDir: string,
 ): Promise<void> {
   const staticsDir = path.join(runDir, 'statics');
@@ -388,7 +388,7 @@ async function generateStaticsRequests(
       // SKIP - not in plan or no config
       safeWriteSync(
         path.join(staticsDir, `${tool.name}.md`),
-        `# ${tool.name} Analysis\n\nSKIP: ${configExists ? 'Not in plan' : tool.checkFile + ' not found'}`,
+        `# ${tool.name} Analysis\n\nSKIP: ${configExists ? 'Not in plan' : `${tool.checkFile} not found`}`,
       );
       safeWriteSync(
         path.join(staticsDir, `${tool.name}_status.json`),
