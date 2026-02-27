@@ -28,6 +28,7 @@
     "flow:commit": "bash scripts/git-flow-commit.sh",
     "flow:prepr": "bash scripts/run-pre-pr.sh",
     "flow:pr": "bash scripts/pr-create.sh",
+    "flow:pr-comments": "bash scripts/pr-comments.sh",
     "flow:postpr-learning": "bash scripts/post-pr-learning.sh",
     "flow:merge": "bash scripts/flow-merge.sh",
     "prepare": "husky"

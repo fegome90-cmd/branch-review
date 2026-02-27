@@ -53,11 +53,28 @@ bun run audit:deps                                        # Dependency vulnerabi
 | `verdict`               | Generate final PASS/FAIL verdict      |
 | `merge`                 | Merge branch after PASS               |
 | `cleanup`               | Remove run artifacts                  |
+| `flow:pr-comments`      | Fetch/review/reply PR comments via gh |
 
 ## Workflow
 
 ```
 init → explore context → explore diff → plan → run → ingest → verdict → merge
+```
+
+## PR Comments from CLI
+
+```bash
+# Fetch comments + generate TODO markdown for current branch PR
+bun run flow:pr-comments -- review
+
+# Fetch only
+bun run flow:pr-comments -- fetch --pr 18 --repo fegome90-cmd/branch-review
+
+# Generate TODO from previously fetched comments
+bun run flow:pr-comments -- todo --pr 18
+
+# Reply to an inline comment
+bun run flow:pr-comments -- reply --comment-id 123456789 --body "Fixed in latest commit"
 ```
 
 ## API Endpoints
