@@ -20,6 +20,9 @@ bun run lint:biome
 echo "▶ pre-pr: running ruff (Python)"
 bun run lint:ruff
 
+echo "▶ pre-pr: running pyright (Python types)"
+bun run lint:pyright
+
 echo "▶ pre-pr: running tests"
 bun test
 

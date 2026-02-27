@@ -35,8 +35,10 @@ Evidence file:
 Command:
 
 ```bash
-CHROME_PATH="/Users/felipe_gonzalez/.browser-driver-manager/chrome/mac_arm-146.0.7680.31/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
-CHROMEDRIVER_PATH="/Users/felipe_gonzalez/.browser-driver-manager/chromedriver/mac_arm-146.0.7680.31/chromedriver-mac-arm64/chromedriver"
+# Set these environment variables or use browser-driver-manager to install
+# Example: npx browser-driver-manager install chrome --platform mac_arm
+export CHROME_PATH="${CHROME_PATH:-}"
+export CHROMEDRIVER_PATH="${CHROMEDRIVER_PATH:-}"
 
 bunx --bun @axe-core/cli http://localhost:3000 \
   --chrome-path "$CHROME_PATH" \
