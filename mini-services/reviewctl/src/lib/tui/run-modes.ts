@@ -333,14 +333,16 @@ export async function runWithTUI<T>(
     },
   };
 
-  const renderSnapshot = () => {
-    const counts = runDir
+  const getCounts = () =>
+    runDir
       ? collectCounts(runDir)
       : {
           tasks: { pending: 0, done: 0, failed: 0 },
           statics: { pending: 0, pass: 0, fail: 0, skip: 0 },
         };
 
+  const renderSnapshot = () => {
+    const counts = getCounts();
     renderer.render({
       commandName: options.commandName,
       runId,
@@ -363,8 +365,21 @@ export async function runWithTUI<T>(
     const data = await options.execute(reporter);
     renderSnapshot();
 
-    // Optional delay to show final state before exiting TUI
-    const successDelay = options.successDelayMs ?? 0;
+    // Show final completed state
+    const finalCounts = getCounts();
+    renderer.renderFinal(
+      {
+        commandName: options.commandName,
+        runId,
+        startedAt,
+        phases,
+        taskCounts: finalCounts.tasks,
+        staticCounts: finalCounts.statics,
+      },
+      'COMPLETED',
+    );
+
+    const successDelay = options.successDelayMs ?? 1500;
     if (successDelay > 0) {
       await new Promise((resolve) => setTimeout(resolve, successDelay));
     }
@@ -388,6 +403,20 @@ export async function runWithTUI<T>(
     const durationMs = Date.now() - startedAt;
 
     if (error instanceof AbortExecutionError) {
+      renderer.renderFinal(
+        {
+          commandName: options.commandName,
+          runId,
+          startedAt,
+          phases,
+          taskCounts: { pending: 0, done: 0, failed: 0 },
+          staticCounts: { pending: 0, pass: 0, fail: 0, skip: 0 },
+        },
+        'ABORTED',
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
       summaryInput = {
         commandName: options.commandName,
         runId,
@@ -409,6 +438,21 @@ export async function runWithTUI<T>(
       error,
       currentPhase,
     );
+
+    const errorCounts = getCounts();
+    renderer.renderFinal(
+      {
+        commandName: options.commandName,
+        runId,
+        startedAt,
+        phases,
+        taskCounts: errorCounts.tasks,
+        staticCounts: errorCounts.statics,
+      },
+      'FAILED',
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
 
     summaryInput = {
       commandName: options.commandName,
