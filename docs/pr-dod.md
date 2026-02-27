@@ -26,6 +26,8 @@ A PR is ready to merge only when all items below are true.
 - [ ] Risky changes include tests or clear mitigation.
 - [ ] Errors are explicit and actionable (no silent failures).
 - [ ] Security-sensitive changes validate input and avoid secret leakage.
+- [ ] PR review comments were triaged/addressed (optional helper):
+  - `bun run flow:pr-comments -- review`
 
 ## 5) Merge readiness
 
