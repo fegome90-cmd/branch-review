@@ -1,6 +1,8 @@
 {
   "tool": "ruff",
-  "status": "SKIPPED",
+  "status": "PENDING",
   "required": false,
-  "reason": "ruff.toml not found"
+  "reason": "Python linter and formatter",
+  "requested_at": "2026-02-27T02:41:21.698Z",
+  "command": "bun run lint:ruff"
 }

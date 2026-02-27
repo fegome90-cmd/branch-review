@@ -1,9 +1,8 @@
 {
   "tool": "biome",
-  "status": "DONE",
+  "status": "PENDING",
   "required": false,
-  "completed_at": "2026-02-26T15:12:50.171Z",
-  "source_path": "/tmp/biome_output.md",
-  "content_hash": "ac05adc458207f19",
-  "is_extra": false
+  "reason": "JS/TS linter and formatter",
+  "requested_at": "2026-02-27T02:41:21.698Z",
+  "command": "bun run lint:biome"
 }

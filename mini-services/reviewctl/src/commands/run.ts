@@ -46,9 +46,18 @@ export async function runCommand(options: {
     ? runWithTUI
     : runWithPlainOutput;
 
+  const successDelayMs = Number.parseInt(
+    process.env.REVIEWCTL_TUI_SUCCESS_DELAY_MS || '',
+    10,
+  );
+
   const result = await runner<RunWorkflowResult>({
     commandName: 'run',
     execute: (reporter) => executeRunWorkflow(options, reporter),
+    successDelayMs:
+      Number.isFinite(successDelayMs) && successDelayMs >= 0
+        ? successDelayMs
+        : undefined,
   });
 
   if (result.exitCode === 0 && result.data) {

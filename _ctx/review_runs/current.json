@@ -3,7 +3,7 @@
   "branch": "review/main-72cb7b2",
   "base_branch": "main",
   "created_at": "2026-02-26T15:04:21.503Z",
-  "status": "completed",
+  "status": "pending_ingest",
   "plan_status": "FOUND",
   "plan_path": "/home/z/my-project/docs/plans/sample-auth-migration.md"
 }

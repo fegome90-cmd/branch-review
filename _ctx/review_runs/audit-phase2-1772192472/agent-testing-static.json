@@ -1,0 +1,198 @@
+{
+  "agent": "testing_static",
+  "generated_at": "2026-02-27T08:41:17.062441",
+  "commands": [
+    {
+      "command": "bun run lint",
+      "exit_code": 0,
+      "ok": true,
+      "stdout_tail": "",
+      "stderr_tail": "$ eslint . --max-warnings=0"
+    },
+    {
+      "command": "bun run typecheck:app",
+      "exit_code": 0,
+      "ok": true,
+      "stdout_tail": "",
+      "stderr_tail": "$ tsc --noEmit -p tsconfig.app.json"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 50,
+        "snippet": "**Testing:** Tests existentes deben seguir pasando"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 91,
+        "snippet": "**Testing:** Agregar test que verifique logging"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 95,
+        "snippet": "### P0-3: Cleanup de Variable de Entorno en Tests"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 97,
+        "snippet": "**Problema:** `process.env.REVIEW_API_TOKEN` no se limpia entre tests."
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 99,
+        "snippet": "**Archivo a modificar:** `src/app/api/review/__tests__/file-routes.test.ts`"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 105,
+        "snippet": "process.env.REVIEW_API_TOKEN = TEST_TOKEN;"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 116,
+        "snippet": "process.env.REVIEW_API_TOKEN = TEST_TOKEN;"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 129,
+        "snippet": "**Testing:** Tests deben seguir pasando"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 169,
+        "snippet": "### P1-2: Expandir Tests de Path Traversal"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 173,
+        "snippet": "**Archivo a modificar:** `src/app/api/review/__tests__/file-routes.test.ts`"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 285,
+        "snippet": "├── P0-3: Test cleanup (evita flaky tests)"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 291,
+        "snippet": "└── P1-2: Expand path traversal tests"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 303,
+        "snippet": "- [ ] `bun run typecheck:app` pasa"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 304,
+        "snippet": "- [ ] `bun test src/app/api/review/` pasa"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 305,
+        "snippet": "- [ ] `bun test src/lib/` pasa"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 306,
+        "snippet": "- [ ] Tests nuevos para path traversal logging"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica."
+    }
+  ]
+}

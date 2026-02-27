@@ -2,13 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "allowJs": false,
-    "types": [
-      "bun-types"
-    ]
+    "types": ["bun-types"]
   },
-  "include": [
-    "mini-services/reviewctl/src/**/*.ts"
-  ],
+  "include": ["mini-services/reviewctl/src/**/*.ts"],
   "exclude": [
     "node_modules",
     "mini-services/reviewctl/node_modules",

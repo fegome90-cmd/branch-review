@@ -1,0 +1,33 @@
+{
+  "schema_version": "2.0",
+  "run_id": "audit-phase2-1772192472",
+  "confirmed_at": "2026-02-27T08:45:00Z",
+  "confirmed_by": "user",
+  "decisions": [
+    {
+      "patch_id": "patch-dedup-1",
+      "user_decision": "approved",
+      "user_notes": "",
+      "approved_at": "2026-02-27T08:45:00Z"
+    },
+    {
+      "patch_id": "patch-dedup-2",
+      "user_decision": "approved",
+      "user_notes": "",
+      "approved_at": "2026-02-27T08:45:00Z"
+    },
+    {
+      "patch_id": "patch-dedup-3",
+      "user_decision": "approved",
+      "user_notes": "",
+      "approved_at": "2026-02-27T08:45:00Z"
+    },
+    {
+      "patch_id": "patch-dedup-4",
+      "user_decision": "approved",
+      "user_notes": "",
+      "approved_at": "2026-02-27T08:45:00Z"
+    }
+  ],
+  "summary": "All 4 patches approved by user"
+}

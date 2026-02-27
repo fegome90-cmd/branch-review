@@ -1,3 +1,3 @@
 # coderabbit Analysis
 
-SKIPPED: .coderabbit.yaml not found
+SKIP: .coderabbit.yaml not found

@@ -1,5 +1,5 @@
-import { access } from 'fs/promises';
-import path from 'path';
+import { access } from 'node:fs/promises';
+import path from 'node:path';
 
 export type HealthCheckResult = {
   ok: boolean;
@@ -8,7 +8,8 @@ export type HealthCheckResult = {
 
 export async function checkReviewRunsReadable(): Promise<HealthCheckResult> {
   const configuredPath = process.env.HEALTHCHECK_REVIEW_RUNS_PATH;
-  const targetPath = configuredPath || path.join(process.cwd(), '_ctx', 'review_runs');
+  const targetPath =
+    configuredPath || path.join(process.cwd(), '_ctx', 'review_runs');
 
   try {
     await access(targetPath);

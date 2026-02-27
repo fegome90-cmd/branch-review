@@ -7,7 +7,9 @@ const previousToken = process.env[TOKEN_KEY];
 const previousPreviousToken = process.env[PREVIOUS_TOKEN_KEY];
 
 function makeRequest(body: unknown, token?: string): Request {
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  };
   if (token) headers['x-review-token'] = token;
 
   return new Request('http://localhost/api/review/command', {
@@ -49,7 +51,9 @@ describe('POST /api/review/command', () => {
   it('returns 401 when token is invalid', async () => {
     process.env[TOKEN_KEY] = 'secret-token';
 
-    const response = await POST(makeRequest({ command: 'plan' }, 'wrong-token') as any);
+    const response = await POST(
+      makeRequest({ command: 'plan' }, 'wrong-token') as any,
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(401);
@@ -61,7 +65,9 @@ describe('POST /api/review/command', () => {
     process.env[TOKEN_KEY] = 'new-secret-token';
     process.env[PREVIOUS_TOKEN_KEY] = 'old-secret-token';
 
-    const response = await POST(makeRequest({ command: 'not-allowed' }, 'old-secret-token') as any);
+    const response = await POST(
+      makeRequest({ command: 'not-allowed' }, 'old-secret-token') as any,
+    );
     expect(response.status).toBe(400);
   });
 
@@ -88,7 +94,10 @@ describe('POST /api/review/command', () => {
     process.env[TOKEN_KEY] = 'secret-token';
 
     const response = await POST(
-      makeRequest({ command: 'not-allowed', args: { runId: 'x' } }, 'secret-token') as any,
+      makeRequest(
+        { command: 'not-allowed', args: { runId: 'x' } },
+        'secret-token',
+      ) as any,
     );
     const payload = await response.json();
 

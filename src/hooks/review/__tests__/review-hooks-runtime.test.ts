@@ -13,7 +13,7 @@ function mockReactHooks() {
       };
       return [value, setValue] as const;
     },
-    useEffect: (effect: () => void | (() => void)) => {
+    useEffect: (effect: () => undefined | (() => void)) => {
       effect();
     },
     useCallback: <T>(callback: T) => callback,

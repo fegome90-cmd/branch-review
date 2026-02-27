@@ -1,0 +1,2 @@
+# Agent Logic
+- [Media] Ambigüedad de alcance (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:343)

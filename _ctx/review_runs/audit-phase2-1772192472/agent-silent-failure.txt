@@ -1,0 +1,9 @@
+# Agent Silent Failure
+- [Media] Necesidad de observabilidad y semántica HTTP (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:5)
+- [Media] Necesidad de observabilidad y semántica HTTP (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:25)
+- [Media] Necesidad de observabilidad y semántica HTTP (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:40)
+- [Media] Necesidad de observabilidad y semántica HTTP (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:41)
+- [Media] Necesidad de observabilidad y semántica HTTP (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:42)
+- [Media] Necesidad de observabilidad y semántica HTTP (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:153)
+- [Media] Necesidad de observabilidad y semántica HTTP (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:198)
+- [Media] Necesidad de observabilidad y semántica HTTP (/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md:286)

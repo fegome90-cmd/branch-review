@@ -1,5 +1,5 @@
-import { spawn } from 'child_process';
-import path from 'path';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { z } from 'zod';
 
 const COMMAND_TIMEOUT_MS = 120000;
@@ -37,7 +37,10 @@ type CommandResult = {
   timedOut: boolean;
 };
 
-type CommandRunner = (cliArgs: string[], timeoutMs: number) => Promise<CommandResult>;
+type CommandRunner = (
+  cliArgs: string[],
+  timeoutMs: number,
+) => Promise<CommandResult>;
 
 type ExecuteContext = {
   clientId: string;
@@ -60,7 +63,9 @@ class InMemoryRateLimiter {
 
   isAllowed(identifier: string, now: number) {
     const timestamps = this.requests.get(identifier) || [];
-    const recent = timestamps.filter((time) => now - time < RATE_LIMIT_WINDOW_MS);
+    const recent = timestamps.filter(
+      (time) => now - time < RATE_LIMIT_WINDOW_MS,
+    );
 
     if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
       this.requests.set(identifier, recent);
@@ -104,7 +109,10 @@ function trimOutput(output: string) {
   return `${output.slice(0, MAX_OUTPUT_CHARS)}\n... [truncated]`;
 }
 
-async function runReviewctl(cliArgs: string[], timeoutMs: number): Promise<CommandResult> {
+async function runReviewctl(
+  cliArgs: string[],
+  timeoutMs: number,
+): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn('bun', cliArgs, {
       cwd: process.cwd(),
@@ -135,7 +143,8 @@ async function runReviewctl(cliArgs: string[], timeoutMs: number): Promise<Comma
 
     child.on('close', (code) => {
       clearTimeout(timeoutId);
-      const output = (stdout || stderr).trim() || `Command failed with exit code ${code}`;
+      const output =
+        (stdout || stderr).trim() || `Command failed with exit code ${code}`;
       resolve({ ok: code === 0, output, timedOut });
     });
   });
@@ -154,23 +163,40 @@ export class ReviewCommandService {
     }
 
     if (this.running) {
-      throw new ReviewCommandError(409, 'COMMAND_IN_PROGRESS', 'Another command is already running');
+      throw new ReviewCommandError(
+        409,
+        'COMMAND_IN_PROGRESS',
+        'Another command is already running',
+      );
     }
 
     this.running = true;
 
     try {
-      const cliPath = path.join(process.cwd(), 'mini-services', 'reviewctl', 'src', 'index.ts');
+      const cliPath = path.join(
+        process.cwd(),
+        'mini-services',
+        'reviewctl',
+        'src',
+        'index.ts',
+      );
       const cliArgs = [cliPath, payload.command, ...toCliArgs(payload.args)];
       const result = await this.runner(cliArgs, COMMAND_TIMEOUT_MS);
       const output = trimOutput(result.output || '');
 
       if (!result.ok && result.timedOut) {
-        throw new ReviewCommandError(503, 'COMMAND_TIMEOUT', 'Command execution timed out', { output });
+        throw new ReviewCommandError(
+          503,
+          'COMMAND_TIMEOUT',
+          'Command execution timed out',
+          { output },
+        );
       }
 
       if (!result.ok) {
-        throw new ReviewCommandError(500, 'COMMAND_FAILED', 'Command failed', { output });
+        throw new ReviewCommandError(500, 'COMMAND_FAILED', 'Command failed', {
+          output,
+        });
       }
 
       return { output: output || 'Command completed successfully' };
@@ -179,7 +205,8 @@ export class ReviewCommandService {
         throw error;
       }
 
-      const message = error instanceof Error ? error.message : 'Command execution failed';
+      const message =
+        error instanceof Error ? error.message : 'Command execution failed';
       throw new ReviewCommandError(500, 'COMMAND_EXECUTION_ERROR', message);
     } finally {
       this.running = false;

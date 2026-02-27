@@ -1,0 +1,6 @@
+{
+  "tool": "pytest",
+  "status": "SKIP",
+  "required": false,
+  "reason": "pytest.ini not found"
+}

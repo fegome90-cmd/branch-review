@@ -1,3 +1,3 @@
 # pyrefly Analysis
 
-SKIPPED: pyproject.toml not found
+SKIP: pyproject.toml not found

@@ -1,6 +1,6 @@
 {
   "tool": "pyrefly",
-  "status": "SKIPPED",
+  "status": "SKIP",
   "required": false,
   "reason": "pyproject.toml not found"
 }

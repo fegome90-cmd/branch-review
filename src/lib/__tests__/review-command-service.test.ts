@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  type CommandPayload,
   ReviewCommandError,
   ReviewCommandService,
-  type CommandPayload,
 } from '../review-command-service';
 
 const validPayload: CommandPayload = {
@@ -19,11 +19,15 @@ describe('ReviewCommandService', () => {
     }));
 
     for (let index = 0; index < 10; index += 1) {
-      const result = await service.execute(validPayload, { clientId: 'same-client' });
+      const result = await service.execute(validPayload, {
+        clientId: 'same-client',
+      });
       expect(result.output).toBe('ok');
     }
 
-    await expect(service.execute(validPayload, { clientId: 'same-client' })).rejects.toMatchObject({
+    await expect(
+      service.execute(validPayload, { clientId: 'same-client' }),
+    ).rejects.toMatchObject({
       status: 429,
       code: 'RATE_LIMITED',
     });
@@ -31,14 +35,20 @@ describe('ReviewCommandService', () => {
 
   it('prevents concurrent execution with 409', async () => {
     let release = () => {};
-    const runnerPromise = new Promise<{ ok: boolean; output: string; timedOut: boolean }>((resolve) => {
+    const runnerPromise = new Promise<{
+      ok: boolean;
+      output: string;
+      timedOut: boolean;
+    }>((resolve) => {
       release = () => resolve({ ok: true, output: 'done', timedOut: false });
     });
 
     const service = new ReviewCommandService(async () => runnerPromise);
 
     const first = service.execute(validPayload, { clientId: 'a' });
-    await expect(service.execute(validPayload, { clientId: 'b' })).rejects.toMatchObject({
+    await expect(
+      service.execute(validPayload, { clientId: 'b' }),
+    ).rejects.toMatchObject({
       status: 409,
       code: 'COMMAND_IN_PROGRESS',
     });

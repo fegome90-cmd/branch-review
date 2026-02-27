@@ -1,0 +1,94 @@
+{
+  "agent": "silent_failure",
+  "generated_at": "2026-02-27T08:41:13.144838",
+  "findings": [
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 5,
+        "snippet": "**Status:** Draft"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados."
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 25,
+        "snippet": "**Problema:** Los bloques `catch` ignoran el error original, dificultando debugging."
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados."
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 40,
+        "snippet": "} catch (error) {"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados."
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 41,
+        "snippet": "logger.error('Failed to read final data', {"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados."
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 42,
+        "snippet": "error: error instanceof Error ? error.message : String(error),"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados."
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 153,
+        "snippet": "// Log failed auth (sin exponer el token)"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados."
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 198,
+        "snippet": "expect([400, 404]).toContain(response.status);"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados."
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 286,
+        "snippet": "├── P0-1: Error logging en API routes"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados."
+    }
+  ]
+}

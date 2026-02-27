@@ -1,0 +1,680 @@
+{
+  "schema_version": "2.0",
+  "handoff_version": "2.0",
+  "generated_at": "2026-02-27T08:41:17.709791",
+  "run_id": "audit-phase2-1772192472",
+  "session_name": "security-phase2",
+  "plan_path": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+  "agent_outputs": {
+    "logic": "_ctx/review_runs/audit-phase2-1772192472/agent-logic.json",
+    "code_quality": "_ctx/review_runs/audit-phase2-1772192472/agent-code-quality.json",
+    "silent_failure": "_ctx/review_runs/audit-phase2-1772192472/agent-silent-failure.json",
+    "testing_static": "_ctx/review_runs/audit-phase2-1772192472/agent-testing-static.json"
+  },
+  "findings": [
+    {
+      "severity": "Media",
+      "title": "Ambigüedad de alcance",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 343,
+        "snippet": "- [ ] Ejecutar todo (P0 + P1 + P2)"
+      },
+      "risk": "puede bloquear implementación",
+      "recommendation": "Aterrizar criterio exacto y responsable por fase.",
+      "agent": "logic"
+    },
+    {
+      "severity": "Media",
+      "title": "Riesgo de cambios amplios",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 277,
+        "snippet": "**Nota:** Esto es refactor opcional, no esencial para seguridad."
+      },
+      "risk": "incremento de riesgo de regresión",
+      "recommendation": "Dividir en cambios pequeños y verificables.",
+      "agent": "code_quality"
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 5,
+        "snippet": "**Status:** Draft"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados.",
+      "agent": "silent_failure"
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 25,
+        "snippet": "**Problema:** Los bloques `catch` ignoran el error original, dificultando debugging."
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados.",
+      "agent": "silent_failure"
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 40,
+        "snippet": "} catch (error) {"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados.",
+      "agent": "silent_failure"
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 41,
+        "snippet": "logger.error('Failed to read final data', {"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados.",
+      "agent": "silent_failure"
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 42,
+        "snippet": "error: error instanceof Error ? error.message : String(error),"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados.",
+      "agent": "silent_failure"
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 153,
+        "snippet": "// Log failed auth (sin exponer el token)"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados.",
+      "agent": "silent_failure"
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 198,
+        "snippet": "expect([400, 404]).toContain(response.status);"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados.",
+      "agent": "silent_failure"
+    },
+    {
+      "severity": "Media",
+      "title": "Necesidad de observabilidad y semántica HTTP",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 286,
+        "snippet": "├── P0-1: Error logging en API routes"
+      },
+      "risk": "detección tardía de incidentes",
+      "recommendation": "Agregar checklist de errores y logs estructurados.",
+      "agent": "silent_failure"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 50,
+        "snippet": "**Testing:** Tests existentes deben seguir pasando"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 91,
+        "snippet": "**Testing:** Agregar test que verifique logging"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 95,
+        "snippet": "### P0-3: Cleanup de Variable de Entorno en Tests"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 97,
+        "snippet": "**Problema:** `process.env.REVIEW_API_TOKEN` no se limpia entre tests."
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 99,
+        "snippet": "**Archivo a modificar:** `src/app/api/review/__tests__/file-routes.test.ts`"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 105,
+        "snippet": "process.env.REVIEW_API_TOKEN = TEST_TOKEN;"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 116,
+        "snippet": "process.env.REVIEW_API_TOKEN = TEST_TOKEN;"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 129,
+        "snippet": "**Testing:** Tests deben seguir pasando"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 169,
+        "snippet": "### P1-2: Expandir Tests de Path Traversal"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 173,
+        "snippet": "**Archivo a modificar:** `src/app/api/review/__tests__/file-routes.test.ts`"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 285,
+        "snippet": "├── P0-3: Test cleanup (evita flaky tests)"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 291,
+        "snippet": "└── P1-2: Expand path traversal tests"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 303,
+        "snippet": "- [ ] `bun run typecheck:app` pasa"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 304,
+        "snippet": "- [ ] `bun test src/app/api/review/` pasa"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 305,
+        "snippet": "- [ ] `bun test src/lib/` pasa"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    },
+    {
+      "severity": "Baja",
+      "title": "Referencia a testing/quality gates",
+      "evidence": {
+        "file": "/Users/felipe_gonzalez/Developer/branch-review/docs/plans/security-fixes-phase2-plan.md",
+        "line": 306,
+        "snippet": "- [ ] Tests nuevos para path traversal logging"
+      },
+      "risk": "ninguno",
+      "recommendation": "Mantener pruebas mínimas por ruta crítica.",
+      "agent": "testing_static"
+    }
+  ],
+  "raw_patch_candidates": [
+    {
+      "id": "patch-1",
+      "priority": "Media",
+      "source_agent": "logic",
+      "change_summary": "Aterrizar criterio exacto y responsable por fase.",
+      "risk_if_not_applied": "puede bloquear implementación",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-2",
+      "priority": "Media",
+      "source_agent": "code_quality",
+      "change_summary": "Dividir en cambios pequeños y verificables.",
+      "risk_if_not_applied": "incremento de riesgo de regresión",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-3",
+      "priority": "Media",
+      "source_agent": "silent_failure",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-4",
+      "priority": "Media",
+      "source_agent": "silent_failure",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-5",
+      "priority": "Media",
+      "source_agent": "silent_failure",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-6",
+      "priority": "Media",
+      "source_agent": "silent_failure",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-7",
+      "priority": "Media",
+      "source_agent": "silent_failure",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-8",
+      "priority": "Media",
+      "source_agent": "silent_failure",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-9",
+      "priority": "Media",
+      "source_agent": "silent_failure",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-10",
+      "priority": "Media",
+      "source_agent": "silent_failure",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-11",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-12",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-13",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-14",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-15",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-16",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-17",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-18",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-19",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-20",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-21",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-22",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-23",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-24",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-25",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-26",
+      "priority": "Baja",
+      "source_agent": "testing_static",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    }
+  ],
+  "deduplicated_patch_candidates": [
+    {
+      "id": "patch-dedup-1",
+      "priority": "Media",
+      "change_summary": "Aterrizar criterio exacto y responsable por fase.",
+      "risk_if_not_applied": "puede bloquear implementación",
+      "source_agents": [
+        "logic"
+      ],
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-dedup-2",
+      "priority": "Media",
+      "change_summary": "Dividir en cambios pequeños y verificables.",
+      "risk_if_not_applied": "incremento de riesgo de regresión",
+      "source_agents": [
+        "code_quality"
+      ],
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-dedup-3",
+      "priority": "Media",
+      "change_summary": "Agregar checklist de errores y logs estructurados.",
+      "risk_if_not_applied": "detección tardía de incidentes",
+      "source_agents": [
+        "silent_failure"
+      ],
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    },
+    {
+      "id": "patch-dedup-4",
+      "priority": "Baja",
+      "change_summary": "Mantener pruebas mínimas por ruta crítica.",
+      "risk_if_not_applied": "ninguno",
+      "source_agents": [
+        "testing_static"
+      ],
+      "status": "proposed",
+      "requires_user_confirmation": true,
+      "user_decision": "deferred",
+      "user_notes": ""
+    }
+  ],
+  "decision_rules": {
+    "allowed_user_decisions": [
+      "approved",
+      "rejected",
+      "deferred"
+    ],
+    "default": "deferred",
+    "requires_user_confirmation": true
+  },
+  "next_step_for_parent_agent": "Presentar deduplicated_patch_candidates al usuario, capturar user_decision por patch y aplicar solo approved."
+}

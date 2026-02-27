@@ -1,19 +1,6 @@
 {
   "agent": "code-simplifier",
-  "status": "DONE",
-  "requested_at": "2026-02-26T15:07:15.501Z",
-  "ingested_at": "2026-02-26T15:11:12.032Z",
-  "run_id": "run_20260226_61dea96e",
-  "source_path": "/tmp/report2.md",
-  "content_hash": "45e8c6fbc19b960e",
-  "is_extra": false,
-  "validation": {
-    "valid": true,
-    "errors": [],
-    "warnings": [
-      "Missing recommended section: Test Plan",
-      "Missing recommended section: Confidence"
-    ],
-    "line_count": 43
-  }
+  "status": "PENDING",
+  "requested_at": "2026-02-27T02:41:21.699Z",
+  "run_id": "run_20260226_61dea96e"
 }
