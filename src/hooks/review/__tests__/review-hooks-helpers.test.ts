@@ -5,19 +5,12 @@ import { buildReviewFinalUrl } from '@/hooks/review/review-final-url';
 import { normalizeRunData } from '@/hooks/review/review-run-normalize';
 
 describe('review hooks helper functions', () => {
-  it('builds command request headers with token', () => {
-    const request = buildCommandRequestInit('plan', {}, 'abc-token');
+  it('builds command request headers', () => {
+    const request = buildCommandRequestInit('plan', {});
     const headers = request.headers as Record<string, string>;
 
     expect(request.method).toBe('POST');
     expect(headers['Content-Type']).toBe('application/json');
-    expect(headers['x-review-token']).toBe('abc-token');
-  });
-
-  it('builds command request without token header when empty', () => {
-    const request = buildCommandRequestInit('run', {}, '  ');
-    const headers = request.headers as Record<string, string>;
-
     expect(headers['x-review-token']).toBeUndefined();
   });
 

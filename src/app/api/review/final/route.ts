@@ -1,18 +1,34 @@
-import { NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { jsonFail, jsonOk } from '@/lib/http';
+import { logger } from '@/lib/logger';
+import { isReviewTokenAuthorized } from '@/lib/review-auth';
 import { readFinalByRunId } from '@/lib/review-runs';
+import { getReviewTokenFromRequest } from '@/lib/review-token';
 
-const runIdSchema = z.string().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/);
+// Security: Regex prevents path traversal by disallowing dots and slashes
+const runIdSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(/^[a-zA-Z0-9_-]+$/);
 
 export async function GET(request: NextRequest) {
+  // Security: Require authentication for all review data access
+  const providedToken = getReviewTokenFromRequest(request);
+  if (!isReviewTokenAuthorized(providedToken)) {
+    return jsonFail('Unauthorized', 401, { code: 'UNAUTHORIZED' });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const runId = searchParams.get('runId');
 
     const parsedRunId = runIdSchema.safeParse(runId);
     if (!parsedRunId.success) {
-      return jsonFail('Invalid or missing runId', 400, { code: 'INVALID_INPUT' });
+      return jsonFail('Invalid or missing runId', 400, {
+        code: 'INVALID_INPUT',
+      });
     }
 
     const finalData = await readFinalByRunId(parsedRunId.data);
@@ -21,7 +37,13 @@ export async function GET(request: NextRequest) {
     }
 
     return jsonOk({ result: finalData });
-  } catch {
-    return jsonFail('Failed to read final data', 500, { code: 'INTERNAL_ERROR' });
+  } catch (error) {
+    // P0-1: Structured error logging for debugging
+    logger.error('Failed to read final data', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return jsonFail('Failed to read final data', 500, {
+      code: 'INTERNAL_ERROR',
+    });
   }
 }

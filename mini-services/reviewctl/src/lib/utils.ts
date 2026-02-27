@@ -1,15 +1,13 @@
-import fs from 'fs';
-import path from 'path';
-import { execSync } from 'child_process';
-import { v4 as uuidv4 } from 'uuid';
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { format } from 'date-fns';
+import { v4 as uuidv4 } from 'uuid';
 import {
-  REVIEW_RUNS_DIR,
   EXPLORE_DIR,
-  PROJECT_ROOT,
-  RunMetadata,
-  PlanStatus,
-  PRECONDITION_ERRORS
+  PRECONDITION_ERRORS,
+  REVIEW_RUNS_DIR,
+  type RunMetadata,
 } from './constants.js';
 
 // Ensure directory exists
@@ -39,9 +37,13 @@ export function isOnReviewBranch(): boolean {
 // Get current branch name
 export function getCurrentBranch(): string {
   try {
-    return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
-  } catch (error) {
-    throw new Error('Failed to get current branch. Are you in a git repository?');
+    return execSync('git rev-parse --abbrev-ref HEAD', {
+      encoding: 'utf-8',
+    }).trim();
+  } catch (_error) {
+    throw new Error(
+      'Failed to get current branch. Are you in a git repository?',
+    );
   }
 }
 
@@ -97,7 +99,7 @@ export function getRunDir(runId: string): string {
 export function explorerFilesExist(): { context: boolean; diff: boolean } {
   return {
     context: fs.existsSync(path.join(EXPLORE_DIR, 'context.md')),
-    diff: fs.existsSync(path.join(EXPLORE_DIR, 'diff.md'))
+    diff: fs.existsSync(path.join(EXPLORE_DIR, 'diff.md')),
   };
 }
 
@@ -106,38 +108,45 @@ export function copyExplorerFiles(runId: string): void {
   const runDir = getRunDir(runId);
   const exploreDest = path.join(runDir, 'explore');
   ensureDir(exploreDest);
-  
+
   const { context, diff } = explorerFilesExist();
-  
+
   if (context) {
     fs.copyFileSync(
       path.join(EXPLORE_DIR, 'context.md'),
-      path.join(exploreDest, 'context.md')
+      path.join(exploreDest, 'context.md'),
     );
   }
-  
+
   if (diff) {
     fs.copyFileSync(
       path.join(EXPLORE_DIR, 'diff.md'),
-      path.join(exploreDest, 'diff.md')
+      path.join(exploreDest, 'diff.md'),
     );
   }
 }
 
 // Get git diff stats
-export function getDiffStats(): { files: number; added: number; removed: number } {
+export function getDiffStats(): {
+  files: number;
+  added: number;
+  removed: number;
+} {
   try {
     const baseBranch = getBaseBranch();
-    const diffstat = execSync(`git diff --shortstat ${baseBranch}...HEAD 2>/dev/null || git diff --shortstat HEAD~1`, { encoding: 'utf-8' });
-    
+    const diffstat = execSync(
+      `git diff --shortstat ${baseBranch}...HEAD 2>/dev/null || git diff --shortstat HEAD~1`,
+      { encoding: 'utf-8' },
+    );
+
     const filesMatch = diffstat.match(/(\d+) files? changed/);
     const addedMatch = diffstat.match(/(\d+) insertions?/);
     const removedMatch = diffstat.match(/(\d+) deletions?/);
-    
+
     return {
-      files: filesMatch ? parseInt(filesMatch[1]) : 0,
-      added: addedMatch ? parseInt(addedMatch[1]) : 0,
-      removed: removedMatch ? parseInt(removedMatch[1]) : 0
+      files: filesMatch ? parseInt(filesMatch[1], 10) : 0,
+      added: addedMatch ? parseInt(addedMatch[1], 10) : 0,
+      removed: removedMatch ? parseInt(removedMatch[1], 10) : 0,
     };
   } catch {
     return { files: 0, added: 0, removed: 0 };
@@ -148,47 +157,63 @@ export function getDiffStats(): { files: number; added: number; removed: number 
 export function getChangedFiles(): string[] {
   try {
     const baseBranch = getBaseBranch();
-    const files = execSync(`git diff --name-only ${baseBranch}...HEAD 2>/dev/null || git diff --name-only HEAD~1`, { encoding: 'utf-8' });
-    return files.trim().split('\n').filter(f => f.length > 0);
+    const files = execSync(
+      `git diff --name-only ${baseBranch}...HEAD 2>/dev/null || git diff --name-only HEAD~1`,
+      { encoding: 'utf-8' },
+    );
+    return files
+      .trim()
+      .split('\n')
+      .filter((f) => f.length > 0);
   } catch {
     return [];
   }
 }
 
 // Validate preconditions
-export function validatePreconditions(required: ('review_branch' | 'context' | 'diff' | 'plan_resolved' | 'no_drift')[]): void {
+export function validatePreconditions(
+  required: (
+    | 'review_branch'
+    | 'context'
+    | 'diff'
+    | 'plan_resolved'
+    | 'no_drift'
+  )[],
+): void {
   const errors: string[] = [];
-  
+
   if (required.includes('review_branch') && !isOnReviewBranch()) {
     errors.push(PRECONDITION_ERRORS.NOT_REVIEW_BRANCH);
   }
-  
+
   const files = explorerFilesExist();
-  
+
   if (required.includes('context') && !files.context) {
     errors.push(PRECONDITION_ERRORS.MISSING_CONTEXT);
   }
-  
+
   if (required.includes('diff') && !files.diff) {
     errors.push(PRECONDITION_ERRORS.MISSING_DIFF);
   }
-  
+
   const run = getCurrentRun();
-  
+
   if (required.includes('plan_resolved') && run) {
     if (run.plan_status === 'MISSING' || run.plan_status === 'AMBIGUOUS') {
       errors.push(PRECONDITION_ERRORS.MISSING_PLAN);
     }
   }
-  
+
   if (required.includes('no_drift') && run) {
     if (run.drift_status === 'DRIFT_CONFIRMED') {
       errors.push(PRECONDITION_ERRORS.DRIFT_CONFIRMED);
     }
   }
-  
+
   if (errors.length > 0) {
-    throw new Error(`Precondition failures:\n${errors.map(e => `  - ${e}`).join('\n')}`);
+    throw new Error(
+      `Precondition failures:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
+    );
   }
 }
 

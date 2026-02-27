@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'crypto';
+import { timingSafeEqual } from 'node:crypto';
 
 function safeEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);
@@ -28,6 +28,16 @@ export function isReviewTokenAuthorized(providedToken: string | null) {
   if (previousToken && safeEqual(providedToken, previousToken)) {
     return true;
   }
+
+  // P1-1: Log failed auth attempts for security monitoring (without exposing token)
+  console.warn(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: 'warn',
+      message: 'Authentication failed',
+      providedTokenLength: providedToken.length,
+    }),
+  );
 
   return false;
 }
