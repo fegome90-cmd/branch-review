@@ -185,16 +185,17 @@ Ejecuta un comando de reviewctl.
 ```
 
 **Comandos permitidos:**
-| Comando | Descripción | Args |
-|---------|-------------|------|
-| `init` | Crear nuevo run | - |
-| `explore` | Explorar contexto/diff | `mode: "context"\|"diff"` |
-| `plan` | Generar plan de revisión | - |
-| `run` | Crear handoffs para agentes | - |
-| `ingest` | Capturar output de agente | `agent: string` |
-| `verdict` | Generar veredicto final | - |
-| `merge` | Merge del branch | - |
-| `cleanup` | Limpiar artefactos | - |
+
+| Comando   | Descripción                 | Args                      |
+| --------- | --------------------------- | ------------------------- |
+| `init`    | Crear nuevo run             | -                         |
+| `explore` | Explorar contexto/diff      | `mode: "context"\|"diff"` |
+| `plan`    | Generar plan de revisión    | -                         |
+| `run`     | Crear handoffs para agentes | -                         |
+| `ingest`  | Capturar output de agente   | `agent: string`           |
+| `verdict` | Generar veredicto final     | -                         |
+| `merge`   | Merge del branch            | -                         |
+| `cleanup` | Limpiar artefactos          | -                         |
 
 **Request:**
 
