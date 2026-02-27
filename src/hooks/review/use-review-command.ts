@@ -6,20 +6,19 @@ import { buildCommandRequestInit } from '@/hooks/review/review-command-request';
 interface ExecuteCommandInput {
   command: ReviewCommand;
   args?: Record<string, string>;
-  token: string;
 }
 
 export function useReviewCommand() {
   const [runningCommand, setRunningCommand] = useState<string | null>(null);
 
   const execute = useCallback(
-    async ({ command, args = {}, token }: ExecuteCommandInput) => {
+    async ({ command, args = {} }: ExecuteCommandInput) => {
       setRunningCommand(command);
 
       try {
         const response = await fetch(
           '/api/review/command',
-          buildCommandRequestInit(command, args, token),
+          buildCommandRequestInit(command, args),
         );
         const data = await parseApiEnvelope<{ output: string }>(response);
         return data.output || 'Command completed';

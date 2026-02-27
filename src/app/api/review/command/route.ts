@@ -1,18 +1,22 @@
-import { randomUUID } from 'crypto';
-import { NextRequest } from 'next/server';
+import { randomUUID } from 'node:crypto';
+import type { NextRequest } from 'next/server';
 import { jsonFail, jsonOk } from '@/lib/http';
 import { logger } from '@/lib/logger';
+import { isReviewTokenAuthorized } from '@/lib/review-auth';
 import {
   commandSchema,
   ReviewCommandError,
   reviewCommandService,
 } from '@/lib/review-command-service';
-import { isReviewTokenAuthorized } from '@/lib/review-auth';
+import {
+  buildReviewTokenCookie,
+  getReviewTokenFromRequest,
+} from '@/lib/review-token';
 
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 
 function getClientId(request: NextRequest) {
-  const tokenId = request.headers.get('x-review-token');
+  const tokenId = getReviewTokenFromRequest(request);
   const ip = request.headers.get('x-forwarded-for') || 'unknown-ip';
   return tokenId ? `token:${tokenId}` : `ip:${ip}`;
 }
@@ -42,11 +46,16 @@ export async function POST(request: NextRequest) {
 
   const requiredToken = process.env.REVIEW_API_TOKEN;
   if (!requiredToken) {
-    logger.error('Missing REVIEW_API_TOKEN configuration', { requestId, route });
-    return jsonFail('Server misconfigured: missing REVIEW_API_TOKEN', 503, { code: 'MISCONFIGURED' });
+    logger.error('Missing REVIEW_API_TOKEN configuration', {
+      requestId,
+      route,
+    });
+    return jsonFail('Server misconfigured: missing REVIEW_API_TOKEN', 503, {
+      code: 'MISCONFIGURED',
+    });
   }
 
-  const providedToken = request.headers.get('x-review-token');
+  const providedToken = getReviewTokenFromRequest(request);
   if (!isReviewTokenAuthorized(providedToken)) {
     logger.warn('Unauthorized review command request', { requestId, route });
     return jsonFail('Unauthorized', 401, { code: 'UNAUTHORIZED' });
@@ -81,7 +90,13 @@ export async function POST(request: NextRequest) {
       status: 200,
     });
 
-    return jsonOk({ output: result.output });
+    const response = jsonOk({ output: result.output });
+
+    if (providedToken) {
+      response.cookies.set(buildReviewTokenCookie(providedToken));
+    }
+
+    return response;
   } catch (error) {
     if (error instanceof ReviewCommandError) {
       logger.warn('Review command failed', {
@@ -105,6 +120,8 @@ export async function POST(request: NextRequest) {
       durationMs: Date.now() - start,
     });
 
-    return jsonFail('Command execution failed', 500, { code: 'INTERNAL_ERROR' });
+    return jsonFail('Command execution failed', 500, {
+      code: 'INTERNAL_ERROR',
+    });
   }
 }

@@ -1,25 +1,23 @@
 'use client';
 
 import { Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReviewCommand } from '@/components/review/types';
 import { CommandOutputCard } from '@/components/review-dashboard/CommandOutputCard';
 import { CommandPanel } from '@/components/review-dashboard/CommandPanel';
 import { DashboardHeader } from '@/components/review-dashboard/DashboardHeader';
 import { ResultsTabs } from '@/components/review-dashboard/ResultsTabs';
 import { RunStatusCard } from '@/components/review-dashboard/RunStatusCard';
+import {
+  clearReviewTokenCookie,
+  syncReviewTokenCookie,
+} from '@/hooks/review/review-token-sync';
 import { useReviewCommand } from '@/hooks/review/use-review-command';
 import { useReviewFinal } from '@/hooks/review/use-review-final';
 import { useReviewRun } from '@/hooks/review/use-review-run';
 
 export default function ReviewDashboard() {
-  const [reviewToken, setReviewToken] = useState(() => {
-    if (typeof window === 'undefined') {
-      return '';
-    }
-
-    return window.localStorage.getItem('review_api_token') ?? '';
-  });
+  const [reviewToken, setReviewToken] = useState('');
   const [commandOutput, setCommandOutput] = useState('');
   const {
     run: currentRun,
@@ -35,6 +33,20 @@ export default function ReviewDashboard() {
   } = useReviewFinal(currentRun?.run_id ?? null);
   const { runningCommand, execute } = useReviewCommand();
 
+  useEffect(() => {
+    const token = reviewToken.trim();
+    const timeoutId = window.setTimeout(() => {
+      if (!token) {
+        void clearReviewTokenCookie();
+        return;
+      }
+
+      void syncReviewTokenCookie(token);
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [reviewToken]);
+
   async function handleRefresh() {
     await refreshRun();
     await refreshFinal();
@@ -47,7 +59,13 @@ export default function ReviewDashboard() {
     setCommandOutput(`Running: reviewctl ${command}...`);
 
     try {
-      const output = await execute({ command, args, token: reviewToken });
+      const token = reviewToken.trim();
+      if (!token) {
+        throw new Error('Review API token is required.');
+      }
+
+      await syncReviewTokenCookie(token);
+      const output = await execute({ command, args });
       setCommandOutput(output);
       await handleRefresh();
     } catch (error) {
@@ -58,7 +76,6 @@ export default function ReviewDashboard() {
 
   function handleTokenChange(token: string) {
     setReviewToken(token);
-    window.localStorage.setItem('review_api_token', token);
   }
 
   if (runLoading || finalLoading) {

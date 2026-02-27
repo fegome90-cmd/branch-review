@@ -35,6 +35,7 @@ bun reviewctl help    # Show CLI commands
 bun run lint                                                # ESLint repo gate
 BR_BIOME_SINCE=origin/main bash scripts/run-biome-check.sh # Biome CLI on changed JS/TS/JSON
 BR_DIFF_RANGE=origin/main...HEAD bash scripts/run-ruff-check.sh # Ruff on changed Python files
+bun run audit:deps                                        # Dependency vulnerability audit
 ```
 
 `run-biome-check.sh` uses Biome CLI (`biome check --changed --since=<ref>`) and validates the `--since` ref before execution.
