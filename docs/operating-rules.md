@@ -58,8 +58,11 @@ Pre-PR scope override:
 
 1. Wait for PR checks to pass.
 2. Address feedback in small commits.
-3. Merge via CLI wrapper with deterministic mode.
-4. Sync local main after merge.
+3. Use PR comments wrapper to track/resolve review feedback:
+   - `bun run flow:pr-comments -- review`
+   - `bun run flow:pr-comments -- reply --comment-id <id> --body "..."`
+4. Merge via CLI wrapper with deterministic mode.
+5. Sync local main after merge.
 
 ## 6) Error and observability standards
 
