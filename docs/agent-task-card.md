@@ -30,6 +30,40 @@ El token se configura via `REVIEW_API_TOKEN` en el entorno.
 
 ## Endpoints
 
+### GET /api/review/info
+
+**Público** - Retorna metadata del API sin requerir autenticación.
+
+**Request:**
+
+```bash
+curl http://localhost:3001/api/review/info
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "name": "branch-review",
+    "version": "1.0.0",
+    "description": "Multi-agent code review orchestration API",
+    "baseUrl": "/api/review",
+    "authentication": {
+      "required": true,
+      "methods": ["X-Review-Token header", "review_api_token cookie"]
+    },
+    "endpoints": [...],
+    "rateLimits": {...},
+    "errorCodes": [...],
+    "workflow": [...]
+  },
+  "error": null
+}
+```
+
+---
+
 ### GET /api/review/run
 
 Obtiene el estado actual del run.

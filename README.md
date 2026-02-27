@@ -64,6 +64,7 @@ init → explore context → explore diff → plan → run → ingest → verdic
 
 | Method | Endpoint            | Returns                   |
 | ------ | ------------------- | ------------------------- |
+| GET    | /api/review/info    | API metadata (public)     |
 | GET    | /api/review/run     | Current run status        |
 | POST   | /api/review/command | Execute reviewctl command |
 | GET    | /api/review/final   | Final verdict JSON        |

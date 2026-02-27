@@ -125,7 +125,19 @@ function consumeUnauthRateLimit(request: NextRequest) {
   };
 }
 
+// Public endpoints that don't require auth or rate limiting
+const PUBLIC_PATHS = ['/api/review/info', '/api/review/token'];
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p);
+}
+
 export function middleware(request: NextRequest) {
+  // Public endpoints: only apply security headers, no rate limiting
+  if (isPublicPath(request.nextUrl.pathname)) {
+    return applySecurityHeaders(NextResponse.next());
+  }
+
   // Security: Rate limit unauthenticated requests to review API
   // Now validates token instead of just checking presence (fixes CodeRabbit finding)
   if (!isAuthenticatedReviewApiRequest(request)) {
