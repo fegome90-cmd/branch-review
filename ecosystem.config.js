@@ -4,7 +4,7 @@ module.exports = {
       name: 'branch-review-api',
       script: 'bun',
       args: '.next/standalone/server.js',
-      cwd: '/Users/felipe_gonzalez/Developer/branch-review',
+      cwd: __dirname,
       instances: 1,
       autorestart: true,
       watch: false,

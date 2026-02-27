@@ -10,7 +10,7 @@ http://localhost:3001
 
 ## Authentication
 
-Todos los endpoints bajo `/api/review/*` requieren autenticación:
+`/api/review/info` es público. El resto de endpoints bajo `/api/review/*` requieren autenticación:
 
 **Método 1: Header**
 

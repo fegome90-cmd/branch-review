@@ -73,13 +73,21 @@ export async function GET() {
       },
     ],
     rateLimits: {
-      unauthenticated: {
+      unauthenticatedDefault: {
         requests: 30,
         windowMs: 60000,
+        scope: 'per-ip + path',
+      },
+      infoEndpoint: {
+        path: '/api/review/info',
+        requests: 100,
+        windowMs: 60000,
+        scope: 'per-ip + path',
       },
       commandExecution: {
         requests: 10,
         windowMs: 60000,
+        scope: 'per-clientId (token if present, otherwise ip)',
       },
     },
     errorCodes: [

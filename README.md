@@ -121,7 +121,7 @@ pm2 save
 
 **API will be available at:** `http://localhost:3001`
 
-**Authentication:** All `/api/review/*` endpoints require `X-Review-Token` header or `review_api_token` cookie.
+**Authentication:** `/api/review/info` is public. Other `/api/review/*` endpoints require `X-Review-Token` header or `review_api_token` cookie.
 
 See `docs/agent-task-card.md` for full API documentation.
 

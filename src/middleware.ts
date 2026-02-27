@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 const REVIEW_TOKEN_COOKIE_NAME = 'review_api_token';
 const UNAUTH_RATE_LIMIT_WINDOW_MS = 60_000;
 const UNAUTH_RATE_LIMIT_MAX_REQUESTS = 30;
+const INFO_RATE_LIMIT_MAX_REQUESTS = 100;
 
 type RateBucket = {
   count: number;
@@ -15,18 +16,15 @@ const unauthRateBuckets = new Map<string, RateBucket>();
 // Security: Constant-time token comparison (Edge Runtime compatible)
 // Uses XOR to compare all bytes regardless of match, preventing timing attacks
 function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    // Still compare to maintain constant time
-    let _diff = 0;
-    for (let i = 0; i < a.length; i++) {
-      _diff |= a.charCodeAt(i) ^ (b.charCodeAt(i % b.length) || 0);
-    }
-    return false;
+  const maxLen = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+
+  for (let i = 0; i < maxLen; i++) {
+    const aCode = i < a.length ? a.charCodeAt(i) : 0;
+    const bCode = i < b.length ? b.charCodeAt(i) : 0;
+    diff |= aCode ^ bCode;
   }
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
+
   return diff === 0;
 }
 
@@ -103,8 +101,18 @@ function isAuthenticatedReviewApiRequest(request: NextRequest) {
   return false;
 }
 
+function getUnauthRateLimitForPath(pathname: string) {
+  if (pathname === '/api/review/info') {
+    return INFO_RATE_LIMIT_MAX_REQUESTS;
+  }
+
+  return UNAUTH_RATE_LIMIT_MAX_REQUESTS;
+}
+
 function consumeUnauthRateLimit(request: NextRequest) {
-  const key = `${getClientIp(request)}:${request.nextUrl.pathname}`;
+  const pathname = request.nextUrl.pathname;
+  const maxRequests = getUnauthRateLimitForPath(pathname);
+  const key = `${getClientIp(request)}:${pathname}`;
   const now = Date.now();
   const existing = unauthRateBuckets.get(key);
 
@@ -113,33 +121,22 @@ function consumeUnauthRateLimit(request: NextRequest) {
     now - existing.windowStartMs >= UNAUTH_RATE_LIMIT_WINDOW_MS
   ) {
     unauthRateBuckets.set(key, { count: 1, windowStartMs: now });
-    return { allowed: true, remaining: UNAUTH_RATE_LIMIT_MAX_REQUESTS - 1 };
+    return { allowed: true, remaining: maxRequests - 1, limit: maxRequests };
   }
 
   existing.count += 1;
   unauthRateBuckets.set(key, existing);
 
   return {
-    allowed: existing.count <= UNAUTH_RATE_LIMIT_MAX_REQUESTS,
-    remaining: Math.max(UNAUTH_RATE_LIMIT_MAX_REQUESTS - existing.count, 0),
+    allowed: existing.count <= maxRequests,
+    remaining: Math.max(maxRequests - existing.count, 0),
+    limit: maxRequests,
   };
 }
 
-// Public endpoints that don't require auth or rate limiting
-const PUBLIC_PATHS = ['/api/review/info', '/api/review/token'];
-
-function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname === p);
-}
-
 export function middleware(request: NextRequest) {
-  // Public endpoints: only apply security headers, no rate limiting
-  if (isPublicPath(request.nextUrl.pathname)) {
-    return applySecurityHeaders(NextResponse.next());
-  }
-
-  // Security: Rate limit unauthenticated requests to review API
-  // Now validates token instead of just checking presence (fixes CodeRabbit finding)
+  // Security: Rate limit unauthenticated requests to review API.
+  // Public endpoints bypass auth but still receive path-specific rate limits.
   if (!isAuthenticatedReviewApiRequest(request)) {
     const rate = consumeUnauthRateLimit(request);
     if (!rate.allowed) {
@@ -155,10 +152,7 @@ export function middleware(request: NextRequest) {
         { status: 429 },
       );
       response.headers.set('Retry-After', '60');
-      response.headers.set(
-        'X-RateLimit-Limit',
-        String(UNAUTH_RATE_LIMIT_MAX_REQUESTS),
-      );
+      response.headers.set('X-RateLimit-Limit', String(rate.limit));
       response.headers.set('X-RateLimit-Remaining', String(rate.remaining));
       return applySecurityHeaders(response);
     }
