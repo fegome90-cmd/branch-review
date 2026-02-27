@@ -23,6 +23,7 @@ function ensureRunsRoot() {
 function createAuthRequest(url: string): Request {
   return new Request(url, {
     headers: { 'x-review-token': TEST_TOKEN },
+    // biome-ignore lint/suspicious/noExplicitAny: test helper for mocking NextRequest
   }) as any;
 }
 
@@ -67,6 +68,7 @@ afterEach(() => {
 describe('GET /api/review/final', () => {
   it('returns 401 when auth token is missing', async () => {
     const request = new Request('http://localhost/api/review/final?runId=test');
+    // biome-ignore lint/suspicious/noExplicitAny: testing with standard Request
     const response = await getFinal(request as any);
     const payload = await response.json();
 
@@ -121,7 +123,6 @@ describe('GET /api/review/final', () => {
       'http://localhost/api/review/final?runId=..',
     );
     const response = await getFinal(request);
-    const payload = await response.json();
 
     // Should fail validation (regex blocks dots) or return 404
     expect([400, 404]).toContain(response.status);
@@ -151,6 +152,7 @@ describe('GET /api/review/final', () => {
 
 describe('GET /api/review/run and /api/review/state', () => {
   it('returns 401 when auth token is missing', async () => {
+    // biome-ignore lint/suspicious/noExplicitAny: testing with standard Request
     const request = new Request('http://localhost/api/review/run') as any;
     const response = await getRun(request);
     const payload = await response.json();
