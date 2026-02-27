@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -13,6 +12,24 @@ type RateBucket = {
 
 const unauthRateBuckets = new Map<string, RateBucket>();
 
+// Security: Constant-time token comparison (Edge Runtime compatible)
+// Uses XOR to compare all bytes regardless of match, preventing timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Still compare to maintain constant time
+    let _diff = 0;
+    for (let i = 0; i < a.length; i++) {
+      _diff |= a.charCodeAt(i) ^ (b.charCodeAt(i % b.length) || 0);
+    }
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 // Security: Timing-safe token comparison for rate limit bypass
 function isValidToken(providedToken: string | null): boolean {
   const currentToken = process.env.REVIEW_API_TOKEN;
@@ -22,24 +39,13 @@ function isValidToken(providedToken: string | null): boolean {
     return false;
   }
 
-  const providedBuffer = Buffer.from(providedToken);
-  const currentBuffer = Buffer.from(currentToken);
-
-  // Only compare if lengths match (timing-safe)
-  if (providedBuffer.length === currentBuffer.length) {
-    if (timingSafeEqual(providedBuffer, currentBuffer)) {
-      return true;
-    }
+  if (timingSafeEqual(providedToken, currentToken)) {
+    return true;
   }
 
   // Check previous token if exists
-  if (previousToken) {
-    const previousBuffer = Buffer.from(previousToken);
-    if (providedBuffer.length === previousBuffer.length) {
-      if (timingSafeEqual(providedBuffer, previousBuffer)) {
-        return true;
-      }
-    }
+  if (previousToken && timingSafeEqual(providedToken, previousToken)) {
+    return true;
   }
 
   return false;

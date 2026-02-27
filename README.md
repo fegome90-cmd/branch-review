@@ -100,6 +100,30 @@ mini-services/reviewctl/
     └── lib/             # CLI utilities
 ```
 
+## PM2 Deployment
+
+Run the API as a daemon with PM2:
+
+```bash
+# 1. Create .env with your token
+echo "REVIEW_API_TOKEN=your-secure-token-here" > .env
+
+# 2. Build production bundle
+bun run build
+
+# 3. Start with PM2
+pm2 start ecosystem.config.js
+
+# 4. Save PM2 configuration
+pm2 save
+```
+
+**API will be available at:** `http://localhost:3001`
+
+**Authentication:** All `/api/review/*` endpoints require `X-Review-Token` header or `review_api_token` cookie.
+
+See `docs/agent-task-card.md` for full API documentation.
+
 ## Contributing
 
 Read these before submitting PRs:
