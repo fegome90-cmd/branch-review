@@ -1,17 +1,17 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { jsonFail, jsonOk } from '@/lib/http';
+import { logger } from '@/lib/logger';
 import { isReviewTokenAuthorized } from '@/lib/review-auth';
 import { readFinalByRunId } from '@/lib/review-runs';
 import { getReviewTokenFromRequest } from '@/lib/review-token';
 
-// Security: Disallow '..' to prevent path traversal attacks
+// Security: Regex prevents path traversal by disallowing dots and slashes
 const runIdSchema = z
   .string()
   .min(1)
   .max(120)
-  .regex(/^[a-zA-Z0-9_-]+$/)
-  .refine((val) => !val.includes('..'), 'Path traversal not allowed');
+  .regex(/^[a-zA-Z0-9_-]+$/);
 
 export async function GET(request: NextRequest) {
   // Security: Require authentication for all review data access
@@ -37,7 +37,11 @@ export async function GET(request: NextRequest) {
     }
 
     return jsonOk({ result: finalData });
-  } catch {
+  } catch (error) {
+    // P0-1: Structured error logging for debugging
+    logger.error('Failed to read final data', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return jsonFail('Failed to read final data', 500, {
       code: 'INTERNAL_ERROR',
     });

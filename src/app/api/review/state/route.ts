@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { jsonFail, jsonOk } from '@/lib/http';
+import { logger } from '@/lib/logger';
 import { isReviewTokenAuthorized } from '@/lib/review-auth';
 import { readCurrentRun, readFinalByRunId } from '@/lib/review-runs';
 import { getReviewTokenFromRequest } from '@/lib/review-token';
@@ -23,7 +24,11 @@ export async function GET(request: NextRequest) {
     const finalData = runId ? await readFinalByRunId(runId) : null;
 
     return jsonOk({ run: runData, final: finalData });
-  } catch {
+  } catch (error) {
+    // P0-1: Structured error logging for debugging
+    logger.error('Failed to read review state', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return jsonFail('Failed to read review state', 500, {
       code: 'INTERNAL_ERROR',
     });
