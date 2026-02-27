@@ -40,7 +40,7 @@ Use this wrapper to ingest CodeRabbit/Copilot/GitHub comments into local artifac
 - Generate TODO from previously fetched comments:
   - `bun run flow:pr-comments -- todo --pr <number>`
 - Reply to an inline PR comment:
-  - `bun run flow:pr-comments -- reply --comment-id <id> --body "..." --repo <owner/repo>`
+  - `bun run flow:pr-comments -- reply --comment-id <id> --body "..." [--repo <owner/repo>]`
 
 Artifacts are written to `_ctx/pr_comments/pr-<number>/`:
 
