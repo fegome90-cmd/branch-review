@@ -50,6 +50,8 @@ Artifacts are written to `_ctx/pr_comments/pr-<number>/`:
 - `comments.txt`
 - `todo.md`
 
+Note: `_ctx/pr_comments/pr-<number>/` artifacts are local/generated workflow output and should generally not be committed. As with other `_ctx/*` artifacts, staged context artifacts may be blocked by repo guards unless `ALLOW_CTX_ARTIFACTS=1` is explicitly set for an intentional one-off commit.
+
 ## Post-PR learning (auto + manual)
 
 After PR creation (or PR detection on the current branch), the flow runs a learning pass that extracts reusable decision patterns as skills.
