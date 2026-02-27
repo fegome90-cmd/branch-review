@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import type { NextRequest } from 'next/server';
 import { DELETE, POST } from '../token/route';
 
 const TOKEN_KEY = 'REVIEW_API_TOKEN';
@@ -28,12 +29,16 @@ describe('POST /api/review/token', () => {
   });
 
   it('returns 401 for invalid token', async () => {
-    const response = await POST(makeRequest({ token: 'wrong' }) as any);
+    const response = await POST(
+      makeRequest({ token: 'wrong' }) as unknown as NextRequest,
+    );
     expect(response.status).toBe(401);
   });
 
   it('sets a HttpOnly cookie for valid token', async () => {
-    const response = await POST(makeRequest({ token: 'secret-token' }) as any);
+    const response = await POST(
+      makeRequest({ token: 'secret-token' }) as unknown as NextRequest,
+    );
     const setCookie = response.headers.get('set-cookie') || '';
 
     expect(response.status).toBe(200);
