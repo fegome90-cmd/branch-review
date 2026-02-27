@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
+import path from 'path';
 import { AGENT_NAMES, type AgentName } from '../lib/constants.js';
 import {
   computeHash,

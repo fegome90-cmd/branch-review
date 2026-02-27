@@ -53,20 +53,12 @@ export interface WorkflowReporter {
   log(message: string): void;
 }
 
-export type KeyAction = 'quit' | 'refresh' | 'abort';
-
-export interface KeypressHandler {
-  start(): void;
-  dispose(): void;
-}
-
 export interface RunModeOptions<T> {
   commandName: string;
   execute: (reporter: WorkflowReporter) => Promise<T>;
   pollIntervalMs?: number;
   /** Delay after successful execution before exiting TUI (default: 0) */
   successDelayMs?: number;
-  onKeypress?: (key: string, action: KeyAction) => void;
 }
 
 export interface RunModeResult<T> {

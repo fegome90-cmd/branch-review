@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createKeyboardInput } from './keyboard.js';
 import {
   AbortExecutionError,
   createTerminalLifecycle,
@@ -357,18 +356,6 @@ export async function runWithTUI<T>(
   renderer.start();
   renderSnapshot();
 
-  const keyboard = createKeyboardInput({
-    onQuit: () => {
-      options.onKeypress?.('q', 'quit');
-      lifecycle.requestAbort('SIGINT');
-    },
-    onRefresh: () => {
-      options.onKeypress?.('r', 'refresh');
-      renderSnapshot();
-    },
-  });
-  keyboard.start();
-
   const pollInterval = setInterval(
     renderSnapshot,
     options.pollIntervalMs ?? 1000,
@@ -483,7 +470,6 @@ export async function runWithTUI<T>(
     };
   } finally {
     clearInterval(pollInterval);
-    keyboard.dispose();
     lifecycle.dispose();
     lifecycle.cleanup();
 

@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { parseBiomeSummary, parseRuffSummary } from './static-parsers.js';
+import {
+  parseBiomeSummary,
+  parseRuffSummary,
+} from './static-parsers.js';
 
 describe('parseRuffSummary', () => {
   test('returns SKIP when no Python files found', () => {
@@ -70,9 +73,7 @@ describe('parseBiomeSummary', () => {
   });
 
   test('returns UNKNOWN for ambiguous/unrecognized output', () => {
-    const result = parseBiomeSummary(
-      'Some random biome output without known patterns',
-    );
+    const result = parseBiomeSummary('Some random biome output without known patterns');
     expect(result.status).toBe('UNKNOWN');
     expect(result.issues).toBe(0);
   });
