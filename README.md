@@ -141,8 +141,9 @@ mini-services/reviewctl/
 Run the API as a daemon with PM2:
 
 ```bash
-# 1. Create .env with your token
-echo "REVIEW_API_TOKEN=your-secure-token-here" > .env
+# 1. Create .env if not exists, or append
+if [ ! -f .env ]; then touch .env; fi
+echo "REVIEW_API_TOKEN=your-secure-token-here" >> .env
 
 # 2. Build production bundle
 bun run build

@@ -113,7 +113,7 @@ High (90%) - Issues confirmed in code review
 
 When ingesting a report, `reviewctl` shows severity-prefixed messages:
 
-```
+```text
 ERROR: Missing required section: Verdict
 WARN: Missing recommended section: Confidence
 ```

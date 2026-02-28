@@ -102,7 +102,8 @@ function isAuthenticatedReviewApiRequest(request: NextRequest) {
 }
 
 function getUnauthRateLimitForPath(pathname: string) {
-  if (pathname === '/api/review/info') {
+  const normalized = pathname.replace(/\/+$/, ''); // remove trailing slashes
+  if (normalized === '/api/review/info') {
     return INFO_RATE_LIMIT_MAX_REQUESTS;
   }
 
