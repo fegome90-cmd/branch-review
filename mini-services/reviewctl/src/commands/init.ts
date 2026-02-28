@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
@@ -14,6 +14,7 @@ import {
   getRunDir,
   getShaForRef,
   isOnReviewBranch,
+  isValidGitRef,
   saveCurrentRun,
 } from '../lib/utils.js';
 
@@ -37,6 +38,15 @@ export async function initCommand(options: {
     const currentBranch = getCurrentBranch();
     const baseBranch = options.base || getBaseBranch();
     const targetBranch = options.target || options.branch || currentBranch;
+
+    // Security: Validate git refs before use
+    if (!isValidGitRef(targetBranch)) {
+      throw new Error(`Invalid target branch/ref: ${targetBranch}`);
+    }
+    if (!isValidGitRef(baseBranch)) {
+      throw new Error(`Invalid base branch/ref: ${baseBranch}`);
+    }
+
     const targetSha = getShaForRef(targetBranch);
     const baseSha = getShaForRef(baseBranch);
 
@@ -57,7 +67,7 @@ export async function initCommand(options: {
         spinner.text = `Creating review branch: ${newBranch}`;
 
         try {
-          execSync(`git checkout -b ${newBranch}`, { stdio: 'inherit' });
+          execFileSync('git', ['checkout', '-b', newBranch], { stdio: 'inherit' });
           branch = newBranch;
         } catch (error) {
           spinner.fail('Failed to create review branch');

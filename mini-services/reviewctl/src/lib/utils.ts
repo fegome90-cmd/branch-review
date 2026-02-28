@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -71,10 +71,37 @@ export function getCurrentSha(): string {
   }
 }
 
+// Security: Validate git ref to prevent shell injection
+// Allows: alphanumeric, dot, slash, underscore, hyphen (typical git ref chars)
+// Rejects: shell metacharacters, spaces, path traversal sequences
+export function isValidGitRef(ref: string): boolean {
+  if (!ref || ref.length === 0 || ref.length > 256) {
+    return false;
+  }
+
+  // Reject path traversal and shell metacharacters
+  const dangerous = /[\s;|&$`\\(){}<>!*?[\]"']/;
+  if (dangerous.test(ref)) {
+    return false;
+  }
+
+  // Reject path traversal
+  if (ref.includes('..')) {
+    return false;
+  }
+
+  // Allow typical git ref characters: a-z A-Z 0-9 . / _ - @
+  const validPattern = /^[a-zA-Z0-9._\/@-]+$/;
+  return validPattern.test(ref);
+}
+
 // Resolve commit SHA for a branch/ref
+// Security: Uses execFileSync to prevent command injection via malicious ref
 export function getShaForRef(ref: string): string {
   try {
-    return execSync(`git rev-parse --short ${ref}`, { encoding: 'utf-8' }).trim();
+    return execFileSync('git', ['rev-parse', '--short', ref], {
+      encoding: 'utf-8',
+    }).trim();
   } catch {
     return 'unknown';
   }
@@ -106,7 +133,15 @@ export function getCurrentRun(): RunMetadata | null {
 }
 
 export function getRunById(runId: string): RunMetadata | null {
-  const runFile = path.join(REVIEW_RUNS_DIR, runId, 'run.json');
+  // Security: Prevent path traversal by validating runId format
+  // Only allow alphanumeric, dash, underscore (typical run_YYYYMMDD_xxx format)
+  if (!runId || /[^a-zA-Z0-9_-]/.test(runId)) {
+    return null;
+  }
+
+  // Use path.basename as defense-in-depth to ensure single path segment
+  const safeRunId = path.basename(runId);
+  const runFile = path.join(REVIEW_RUNS_DIR, safeRunId, 'run.json');
   if (!fs.existsSync(runFile)) {
     return null;
   }
