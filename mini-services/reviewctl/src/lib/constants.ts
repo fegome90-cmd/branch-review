@@ -22,7 +22,7 @@ export type ReviewLevel = 'auto' | 'quick' | 'thorough' | 'comprehensive';
 export type ReviewType = 'auto' | 'python' | 'sql' | 'general' | 'python+sql';
 
 // Drift status
-export type DriftStatus = 'ALIGNED' | 'DRIFT_RISK' | 'DRIFT_CONFIRMED';
+export type DriftStatus = 'ALIGNED' | 'DRIFT_RISK' | 'DRIFT_CONFIRMED' | 'DRIFT_OVERRIDE';
 
 // Plan status
 export type PlanStatus = 'FOUND' | 'MISSING' | 'AMBIGUOUS';

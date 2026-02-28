@@ -67,7 +67,7 @@ export async function initCommand(options: {
         spinner.text = `Creating review branch: ${newBranch}`;
 
         try {
-          execFileSync('git', ['checkout', '-b', newBranch], { stdio: 'inherit' });
+          execFileSync('git', ['checkout', '-b', newBranch, targetBranch], { stdio: 'inherit' });
           branch = newBranch;
         } catch (error) {
           spinner.fail('Failed to create review branch');

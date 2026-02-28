@@ -138,13 +138,19 @@ async function executeRunWorkflow(
   if (run.head_sha_at_plan && run.head_sha_at_plan !== headNow) {
     driftReasons.push(`HEAD changed (${run.head_sha_at_plan} -> ${headNow})`);
   }
-  if (run.context_digest && currentContextDigest && run.context_digest !== currentContextDigest) {
+  if (run.context_digest && !currentContextDigest) {
+    driftReasons.push('context snapshot missing');
+  } else if (run.context_digest && currentContextDigest && run.context_digest !== currentContextDigest) {
     driftReasons.push('context digest changed since explore');
   }
-  if (run.diff_digest && currentDiffDigest && run.diff_digest !== currentDiffDigest) {
+  if (run.diff_digest && !currentDiffDigest) {
+    driftReasons.push('diff snapshot missing');
+  } else if (run.diff_digest && currentDiffDigest && run.diff_digest !== currentDiffDigest) {
     driftReasons.push('diff digest changed since explore');
   }
-  if (run.plan_digest && currentPlanDigest && run.plan_digest !== currentPlanDigest) {
+  if (run.plan_digest && !currentPlanDigest) {
+    driftReasons.push('plan snapshot missing');
+  } else if (run.plan_digest && currentPlanDigest && run.plan_digest !== currentPlanDigest) {
     driftReasons.push('plan digest changed since planning');
   }
 
@@ -160,6 +166,7 @@ async function executeRunWorkflow(
 
   if (driftDetected && options.allowDrift) {
     run.drift_override_used = true;
+    run.drift_status = 'DRIFT_OVERRIDE';
     saveCurrentRun(run);
   }
 

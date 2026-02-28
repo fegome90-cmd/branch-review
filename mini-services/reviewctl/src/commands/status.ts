@@ -29,12 +29,13 @@ export async function statusCommand(options: StatusOptions) {
     const runDir = getRunDir(run.run_id);
     const status = buildStatus(runDir, run);
 
-    spinner.succeed(chalk.green(`Status resolved: ${run.run_id}`));
-
     if (options.json) {
+      spinner.stop();
       console.log(JSON.stringify(status, null, 2));
       return;
     }
+
+    spinner.succeed(chalk.green(`Status resolved: ${run.run_id}`));
 
     const targetBranch = run.target_branch || run.branch;
     console.log(chalk.gray(`  Run ID: ${run.run_id}`));
