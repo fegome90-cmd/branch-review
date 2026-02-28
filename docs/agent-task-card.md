@@ -4,7 +4,7 @@
 
 ## Base URL
 
-```text
+```
 http://localhost:3001
 ```
 
@@ -14,13 +14,13 @@ http://localhost:3001
 
 **Método 1: Header**
 
-```http
+```
 X-Review-Token: <your-token>
 ```
 
 **Método 2: Cookie**
 
-```http
+```
 Cookie: review_api_token=<your-token>
 ```
 
@@ -50,7 +50,7 @@ curl http://localhost:3001/api/review/info
     "description": "Multi-agent code review orchestration API",
     "baseUrl": "/api/review",
     "authentication": {
-      "required": false,
+      "required": true,
       "methods": ["X-Review-Token header", "review_api_token cookie"]
     },
     "endpoints": [...],
@@ -186,16 +186,16 @@ Ejecuta un comando de reviewctl.
 
 **Comandos permitidos:**
 
-| Comando   | Descripción                 | Args                                                    |
-| --------- | --------------------------- | ------------------------------------------------------- |
-| `init`    | Crear nuevo run             | `--base <ref>, --target <ref>` (deprecated: `--branch`) |
-| `explore` | Explorar contexto/diff      | `mode: "context"\|"diff"`                               |
-| `plan`    | Generar plan de revisión    | -                                                       |
-| `run`     | Crear handoffs para agentes | -                                                       |
-| `ingest`  | Capturar output de agente   | `agent: string`                                         |
-| `verdict` | Generar veredicto final     | -                                                       |
-| `merge`   | Merge del branch            | -                                                       |
-| `cleanup` | Limpiar artefactos          | -                                                       |
+| Comando   | Descripción                 | Args                      |
+| --------- | --------------------------- | ------------------------- |
+| `init`    | Crear nuevo run             | -                         |
+| `explore` | Explorar contexto/diff      | `mode: "context"\|"diff"` |
+| `plan`    | Generar plan de revisión    | -                         |
+| `run`     | Crear handoffs para agentes | -                         |
+| `ingest`  | Capturar output de agente   | `agent: string`           |
+| `verdict` | Generar veredicto final     | -                         |
+| `merge`   | Merge del branch            | -                         |
+| `cleanup` | Limpiar artefactos          | -                         |
 
 **Request:**
 
