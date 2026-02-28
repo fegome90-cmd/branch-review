@@ -11,6 +11,32 @@ import {
   saveCurrentRun,
 } from '../lib/utils.js';
 
+/**
+ * Generate final verdict from ingested agent and static analysis reports.
+ *
+ * Aggregates all findings, warnings, and agent results to produce
+ * a PASS/FAIL verdict with justification.
+ *
+ * **Output**:
+ * - `final.md`: Human-readable summary
+ * - `final.json`: Machine-readable verdict object
+ *
+ * **Verdict logic**:
+ * - FAIL: Any P0 findings exist
+ * - PASS: No P0 findings
+ * - Includes warnings count and breakdown by agent
+ *
+ * @param options - Verdict command options
+ * @param options.json - Output verdict as JSON (default: markdown)
+ *
+ * @throws {Error} If no active run or reports missing
+ *
+ * @example
+ * ```bash
+ * reviewctl verdict         # Generate final.md and final.json
+ * reviewctl verdict --json  # Output verdict as JSON
+ * ```
+ */
 export async function verdictCommand(options: {
   json?: boolean;
   allowIncomplete?: boolean;
@@ -163,6 +189,7 @@ export async function verdictCommand(options: {
 
     // Update run status
     run.status = 'completed';
+    run.warnings_total = aggregated.warningsTotal;
     saveCurrentRun(run);
 
     spinner.succeed(chalk.green('Verdict generated'));
@@ -192,6 +219,7 @@ export async function verdictCommand(options: {
           `  Required statics: ${requiredStaticsPassed}/${staticGate.required.length} passed`,
         ),
       );
+      console.log(chalk.gray(`  Warnings: ${aggregated.warningsTotal}`));
 
       if (staticGate.blocking.length > 0) {
         console.log(
@@ -259,14 +287,25 @@ interface StaticGateEvaluation {
   blocking: RequiredStaticResult[];
 }
 
-export function normalizeAgentReviewStatus(rawStatus: unknown): 'PASS' | 'FAIL' | 'PENDING' {
+export function normalizeAgentReviewStatus(
+  rawStatus: unknown,
+): 'PASS' | 'FAIL' | 'PENDING' {
   const normalized = String(rawStatus || '').toUpperCase();
 
-  if (normalized === 'DONE' || normalized === 'PASS' || normalized === 'COMPLETED') {
+  if (
+    normalized === 'DONE' ||
+    normalized === 'PASS' ||
+    normalized === 'COMPLETED'
+  ) {
     return 'PASS';
   }
 
-  if (normalized === 'FAIL' || normalized === 'FAILED' || normalized === 'INVALID' || normalized === 'ERROR') {
+  if (
+    normalized === 'FAIL' ||
+    normalized === 'FAILED' ||
+    normalized === 'INVALID' ||
+    normalized === 'ERROR'
+  ) {
     return 'FAIL';
   }
 
@@ -419,6 +458,8 @@ interface AggregatedResults {
   p0Total: number;
   p1Total: number;
   p2Total: number;
+  warningsTotal: number;
+  warningsByAgent: Record<string, number>;
   agents: Record<
     string,
     { p0: number; p1: number; p2: number; status: string }
@@ -438,6 +479,8 @@ function aggregateReports(
     p0Total: 0,
     p1Total: 0,
     p2Total: 0,
+    warningsTotal: 0,
+    warningsByAgent: {},
     agents: {},
     statics: {},
     topP0Findings: [],
@@ -459,6 +502,12 @@ function aggregateReports(
     if (fs.existsSync(statusPath)) {
       const status = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
       agentStatus = status.status || 'pending';
+
+      const warnings = Array.isArray(status.validation?.warnings)
+        ? status.validation.warnings.length
+        : 0;
+      result.warningsByAgent[agent] = warnings;
+      result.warningsTotal += warnings;
     }
 
     const normalizedAgentStatus = normalizeAgentReviewStatus(agentStatus);
@@ -557,7 +606,8 @@ function generateFinalMd(
 
 ## Run Information
 - **Run ID**: ${run.run_id}
-- **Branch**: ${run.branch}
+- **Review Branch**: ${run.branch}
+- **Target Branch**: ${run.target_branch || run.branch}
 - **Base Branch**: ${run.base_branch}
 - **Plan Source**: ${run.plan_path || 'N/A'}
 - **Generated**: ${timestamp}
@@ -606,6 +656,7 @@ ${
           .join(', ')
       : 'None'
   } |
+| Warnings | ${aggregated.warningsTotal} |
 
 ---
 
@@ -633,6 +684,20 @@ ${
             ? '✗'
             : '?';
     md += `| ${agent} | ${stats.p0} | ${stats.p1} | ${stats.p2} | ${statusIcon} |\n`;
+  }
+
+  if (aggregated.warningsTotal > 0) {
+    md += `
+### Warnings by Agent
+| Agent | Warnings |
+|-------|----------|
+`;
+
+    for (const [agent, warningCount] of Object.entries(
+      aggregated.warningsByAgent,
+    )) {
+      md += `| ${agent} | ${warningCount} |\n`;
+    }
   }
 
   md += `
@@ -715,6 +780,7 @@ Total P2 issues: ${aggregated.p2Total}. See individual reports for details.
 - **Status**: ${run.drift_status || 'UNKNOWN'}
 - **Plan Match**: ${run.plan_status === 'FOUND' ? 'Verified against plan' : 'No plan available'}
 - **Deviations**: ${run.drift_status === 'ALIGNED' ? 'None detected' : 'Review required'}
+- **DRIFT OVERRIDE USED**: ${run.drift_override_used ? 'YES' : 'NO'}
 
 ---
 
@@ -778,6 +844,7 @@ function generateFinalJson(
   return {
     run_id: run.run_id,
     branch: run.branch,
+    target_branch: run.target_branch || run.branch,
     base_branch: run.base_branch,
     timestamp: new Date().toISOString(),
     verdict,
@@ -785,12 +852,14 @@ function generateFinalJson(
       p0_total: aggregated.p0Total,
       p1_total: aggregated.p1Total,
       p2_total: aggregated.p2Total,
+      warnings_total: aggregated.warningsTotal,
       files_changed: diffStats.files,
       lines_added: diffStats.added,
       lines_removed: diffStats.removed,
     },
     agents: aggregated.agents,
     statics: aggregated.statics,
+    warnings_by_agent: aggregated.warningsByAgent,
     static_gate: {
       required: staticGate.required,
       blocking: staticGate.blocking,
@@ -801,6 +870,7 @@ function generateFinalJson(
     drift: {
       status: run.drift_status || 'UNKNOWN',
       plan_source: run.plan_path || null,
+      override_used: Boolean(run.drift_override_used),
     },
     artifacts: {
       context: 'explore/context.md',

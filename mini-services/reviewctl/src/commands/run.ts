@@ -10,7 +10,9 @@ import { detectInteractiveTTY } from '../lib/tui/detection.js';
 import { runWithPlainOutput, runWithTUI } from '../lib/tui/run-modes.js';
 import type { WorkflowReporter } from '../lib/tui/types.js';
 import {
+  computeFileDigest,
   getCurrentRun,
+  getCurrentSha,
   getRunDir,
   saveCurrentRun,
   validatePreconditions,
@@ -35,12 +37,46 @@ function safeWriteSync(filePath: string, content: string): void {
   }
 }
 
+/**
+ * Execute review workflow: generate static and agent handoff requests.
+ *
+ * This is the main entry point for running a review.
+ *
+ * **Workflow phases**:
+ * 1. Validate preconditions (review branch, context, diff, plan)
+ * 2. Prepare run context (detect drift, resolve plan)
+ * 3. Generate static analysis requests (biome, ruff, etc.)
+ * 4. Generate agent handoff requests (code-reviewer, etc.)
+ * 5. Finalize run state
+ *
+ * **Drift protection**:
+ * - Detects drift by comparing HEAD SHA and file digests
+ * - Fails with error unless `--allow-drift` is used
+ * - Sets `drift_status` to `DRIFT_OVERRIDE` when allowed
+ *
+ * @param options - Run command options
+ * @param options.backend - Backend to use (reserved for future use)
+ * @param options.maxAgents - Maximum number of agents to run (1-3)
+ * @param options.timeout - Timeout in minutes per agent
+ * @param options.noPlan - Skip plan resolution
+ * @param options.plan - Whether to resolve plan (default: true)
+ * @param options.allowDrift - Allow drift with override flag
+ *
+ * @throws {Error} If preconditions not met or drift detected (without --allow-drift)
+ *
+ * @example
+ * ```bash
+ * reviewctl run --maxAgents 3
+ * reviewctl run --allow-drift  # for debugging
+ * ```
+ */
 export async function runCommand(options: {
   backend?: string;
   maxAgents: string;
   timeout: string;
   noPlan?: boolean;
   plan?: boolean;
+  allowDrift?: boolean;
 }) {
   const runner = detectInteractiveTTY(process.stdout, process.stderr)
     ? runWithTUI
@@ -73,6 +109,7 @@ async function executeRunWorkflow(
     timeout: string;
     noPlan?: boolean;
     plan?: boolean;
+    allowDrift?: boolean;
   },
   reporter: WorkflowReporter,
 ): Promise<RunWorkflowResult> {
@@ -114,15 +151,69 @@ async function executeRunWorkflow(
     throw new Error('No active review run. Run: reviewctl init');
   }
 
+  const runDir = getRunDir(run.run_id);
+
   reporter.setRunMeta({
     runId: run.run_id,
-    runDir: getRunDir(run.run_id),
+    runDir,
   });
 
-  if (run.drift_status === 'DRIFT_CONFIRMED') {
+  const headNow = getCurrentSha();
+  const planPathFromRun = path.join(runDir, 'plan.md');
+  const contextPath = path.join(runDir, 'explore', 'context.md');
+  const diffPath = path.join(runDir, 'explore', 'diff.md');
+
+  const currentContextDigest = computeFileDigest(contextPath);
+  const currentDiffDigest = computeFileDigest(diffPath);
+  const currentPlanDigest = computeFileDigest(planPathFromRun);
+
+  const driftReasons: string[] = [];
+  if (run.head_sha_at_plan && run.head_sha_at_plan !== headNow) {
+    driftReasons.push(`HEAD changed (${run.head_sha_at_plan} -> ${headNow})`);
+  }
+  if (run.context_digest && !currentContextDigest) {
+    driftReasons.push('context snapshot missing');
+  } else if (
+    run.context_digest &&
+    currentContextDigest &&
+    run.context_digest !== currentContextDigest
+  ) {
+    driftReasons.push('context digest changed since explore');
+  }
+  if (run.diff_digest && !currentDiffDigest) {
+    driftReasons.push('diff snapshot missing');
+  } else if (
+    run.diff_digest &&
+    currentDiffDigest &&
+    run.diff_digest !== currentDiffDigest
+  ) {
+    driftReasons.push('diff digest changed since explore');
+  }
+  if (run.plan_digest && !currentPlanDigest) {
+    driftReasons.push('plan snapshot missing');
+  } else if (
+    run.plan_digest &&
+    currentPlanDigest &&
+    run.plan_digest !== currentPlanDigest
+  ) {
+    driftReasons.push('plan digest changed since planning');
+  }
+
+  const driftDetected =
+    run.drift_status === 'DRIFT_CONFIRMED' || driftReasons.length > 0;
+
+  if (driftDetected && !options.allowDrift) {
+    run.drift_status = 'DRIFT_CONFIRMED';
+    saveCurrentRun(run);
     throw new Error(
-      'DRIFT_CONFIRMED blocks review run. Resolve drift issues first.',
+      `Drift detected: ${driftReasons.join('; ') || 'state marked as DRIFT_CONFIRMED'}. Re-run explore context/diff + plan, or use --allow-drift for debug.`,
     );
+  }
+
+  if (driftDetected && options.allowDrift) {
+    run.drift_override_used = true;
+    run.drift_status = 'DRIFT_OVERRIDE';
+    saveCurrentRun(run);
   }
 
   const maxAgents = Math.max(
@@ -130,7 +221,6 @@ async function executeRunWorkflow(
     Math.min(parseInt(options.maxAgents, 10) || MAX_AGENTS, MAX_AGENTS),
   );
 
-  const runDir = getRunDir(run.run_id);
   const planPath = path.join(runDir, 'plan.md');
   const hasPlan = fs.existsSync(planPath);
 
@@ -558,7 +648,8 @@ function generateAgentRequestMd(agent: AgentName, run: RunMetadata): string {
 
 ## Run Information
 - **Run ID**: ${run.run_id}
-- **Branch**: ${run.branch}
+- **Review Branch**: ${run.branch}
+- **Target Branch**: ${run.target_branch || run.branch}
 - **Base Branch**: ${run.base_branch}
 - **Timestamp**: ${timestamp}
 
@@ -575,13 +666,18 @@ Before executing, review these context files:
 
 ## Output Requirements
 
-Generate a report following \`report_contract.md\`:
+Generate a report following \`report_contract.md\`.
 
+### Required sections (ERROR if missing)
 1. **Meta section**: Run ID, agent, timestamp
 2. **Summary**: 1-2 sentences
 3. **Findings**: P0/P1/P2 with evidence
-4. **Statistics**: Count by priority
-5. **Verdict**: PASS or FAIL with justification
+4. **Verdict**: PASS or FAIL with justification
+
+### Recommended sections (WARN if missing)
+1. **Test Plan**
+2. **Confidence**
+3. **Statistics**: Count by priority
 
 ### Constraints
 - **Output Limit**: ≤120 lines
@@ -618,7 +714,9 @@ _Generated by reviewctl - Handoff Generator_
 function generateAgentPrompt(agent: AgentName, run: RunMetadata): string {
   return `## Context
 - **Run ID**: ${run.run_id}
-- **Branch**: ${run.branch}
+- **Review Branch**: ${run.branch}
+- **Target Branch**: ${run.target_branch || run.branch}
+- **Base Branch**: ${run.base_branch}
 - **Stack**: Auto-detected (see explore/context.md)
 - **Plan Source**: ${run.plan_status}
 

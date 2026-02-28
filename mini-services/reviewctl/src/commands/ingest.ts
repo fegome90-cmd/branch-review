@@ -21,6 +21,34 @@ import { normalizeAgentReviewStatus } from './verdict.js';
 // Static tools configuration
 const STATIC_TOOLS = ['biome', 'ruff', 'pyrefly', 'pytest', 'coderabbit'];
 
+/**
+ * Ingest agent or static analysis report.
+ *
+ * Validates report against WARN/ERROR contract and saves to run directory.
+ *
+ * **Validation**:
+ * - ERROR: Blocking issues (missing required sections, >120 lines)
+ * - WARN: Non-blocking issues (missing recommended sections, no evidence)
+ *
+ * **Output format**:
+ * - Prefixes messages with `ERROR:` or `WARN:`
+ * - Saves report to appropriate directory
+ * - Updates agent/status.json or statics/{tool}_status.json
+ *
+ * @param options - Ingest command options
+ * @param options.agent - Agent name (if ingesting agent report)
+ * @param options.static - Static tool name (if ingesting static analysis)
+ * @param options.input - Path to report file or `-` for stdin
+ *
+ * @throws {Error} If validation fails with ERROR severity
+ *
+ * @example
+ * ```bash
+ * reviewctl ingest --agent code-reviewer --input report.md
+ * reviewctl ingest --static biome --input /tmp/biome-output.md
+ * cat report.md | reviewctl ingest --agent code-simplifier --input -
+ * ```
+ */
 export async function ingestCommand(options: {
   agent?: string;
   static?: string;
@@ -255,12 +283,12 @@ async function ingestAgentReport(
     );
     console.log(chalk.red('\n  Contract violations:'));
     for (const err of validation.errors) {
-      console.log(chalk.red(`    - ${err}`));
+      console.log(chalk.red(`    ERROR: ${err}`));
     }
     if (validation.warnings.length > 0) {
       console.log(chalk.yellow('\n  Warnings:'));
       for (const warn of validation.warnings) {
-        console.log(chalk.yellow(`    - ${warn}`));
+        console.log(chalk.yellow(`    WARN: ${warn}`));
       }
     }
     console.log(chalk.gray(`\n  Status: FAIL (not counted as complete)`));
@@ -276,7 +304,7 @@ async function ingestAgentReport(
   if (validation.warnings.length > 0) {
     console.log(chalk.yellow('\n  Warnings:'));
     for (const warn of validation.warnings) {
-      console.log(chalk.yellow(`    - ${warn}`));
+      console.log(chalk.yellow(`    WARN: ${warn}`));
     }
   }
 
@@ -386,6 +414,8 @@ async function ingestStaticReport(
       pytestSummary === null
         ? {
             issues: staticSummary.issues,
+            blocking_issues: staticSummary.blockingIssues ?? null,
+            warning_issues: staticSummary.warningIssues ?? null,
             reason: staticSummary.reason,
           }
         : {

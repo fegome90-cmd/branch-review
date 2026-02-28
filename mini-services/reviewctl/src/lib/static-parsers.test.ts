@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  parseBiomeSummary,
-  parseRuffSummary,
-} from './static-parsers.js';
+import { parseBiomeSummary, parseRuffSummary } from './static-parsers.js';
 
 describe('parseRuffSummary', () => {
   test('returns SKIP when no Python files found', () => {
@@ -29,10 +26,20 @@ describe('parseRuffSummary', () => {
     expect(result.issues).toBe(3);
   });
 
-  test('returns FAIL when rule findings are present', () => {
+  test('returns FAIL when blocking rule findings are present', () => {
     const result = parseRuffSummary('src/main.py:10:5: E501 line too long');
     expect(result.status).toBe('FAIL');
     expect(result.issues).toBe(1);
+    expect(result.blockingIssues).toBe(1);
+  });
+
+  test('returns PASS when only non-blocking warnings are present', () => {
+    const result = parseRuffSummary(
+      'src/main.py:10:5: B007 loop control variable not used',
+    );
+    expect(result.status).toBe('PASS');
+    expect(result.warningIssues).toBe(1);
+    expect(result.blockingIssues).toBe(0);
   });
 
   test('returns UNKNOWN for ambiguous output', () => {
@@ -73,7 +80,9 @@ describe('parseBiomeSummary', () => {
   });
 
   test('returns UNKNOWN for ambiguous/unrecognized output', () => {
-    const result = parseBiomeSummary('Some random biome output without known patterns');
+    const result = parseBiomeSummary(
+      'Some random biome output without known patterns',
+    );
     expect(result.status).toBe('UNKNOWN');
     expect(result.issues).toBe(0);
   });

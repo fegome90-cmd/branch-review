@@ -50,9 +50,44 @@ bun run audit:deps                                        # Dependency vulnerabi
 | `plan`                  | Generate review plan                  |
 | `run`                   | Create handoff requests for agents    |
 | `ingest --agent <name>` | Capture agent output                  |
+| `status`                | Show run progress and status          |
 | `verdict`               | Generate final PASS/FAIL verdict      |
 | `merge`                 | Merge branch after PASS               |
 | `cleanup`               | Remove run artifacts                  |
+
+### Command Details
+
+**`init`** - Initialize review run
+
+```bash
+reviewctl init --create --base main --target feat/my-feature
+reviewctl init --create                              # base=auto, target=HEAD
+reviewctl init --branch feat/x                       # deprecated, use --target
+```
+
+**`status`** - Show run status
+
+```bash
+reviewctl status              # current active run
+reviewctl status --last       # most recent run
+reviewctl status --run-id run_20260227_abc123
+reviewctl status --json       # JSON output
+```
+
+**`run`** - Generate agent handoffs
+
+```bash
+reviewctl run                         # fail if drift detected
+reviewctl run --allow-drift           # override drift (debug only)
+reviewctl run --max-agents 2
+```
+
+**`ingest`** - Capture agent/static output
+
+```bash
+reviewctl ingest --agent code-reviewer --input report.md
+reviewctl ingest --static ruff --input ruff-output.txt
+```
 
 ## Workflow
 

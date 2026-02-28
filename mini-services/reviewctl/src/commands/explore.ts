@@ -12,16 +12,38 @@ import {
   type StackInfo,
 } from '../lib/stack-detector.js';
 import {
+  computeDigest,
   copyExplorerFiles,
   ensureDir,
   getBaseBranch,
   getChangedFiles,
   getCurrentBranch,
   getCurrentRun,
+  getCurrentSha,
   getDiffStats,
+  getShaForRef,
   saveCurrentRun,
 } from '../lib/utils.js';
 
+/**
+ * Explore repository context and generate diff.
+ *
+ * Generates `explore/context.md` (stack detection, sensitive zones)
+ * and `explore/diff.md` (changed files, drift check).
+ *
+ * Also records HEAD SHA and file digests for drift detection.
+ *
+ * @param options - Explore command options
+ * @param options.mode - Exploration mode: "context" or "diff"
+ *
+ * @throws {Error} If not on review branch or git commands fail
+ *
+ * @example
+ * ```bash
+ * reviewctl explore context  # Generate context.md
+ * reviewctl explore diff     # Generate diff.md
+ * ```
+ */
 export async function exploreCommand(
   type: string,
   options: { force?: boolean },
@@ -102,6 +124,19 @@ async function runContextExplorer(spinner: any, force?: boolean) {
     baseBranch,
   );
   fs.writeFileSync(outputPath, content);
+
+  const run = getCurrentRun();
+  if (run) {
+    run.head_sha_at_explore = getCurrentSha();
+    run.context_digest = computeDigest(content);
+    saveCurrentRun(run);
+
+    const runDir = path.join(REVIEW_RUNS_DIR, run.run_id);
+    fs.writeFileSync(
+      path.join(runDir, 'run.json'),
+      JSON.stringify(run, null, 2),
+    );
+  }
 }
 
 function generateContextMd(
@@ -266,6 +301,8 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
   spinner.text = 'Generating diff analysis...';
   const branch = getCurrentBranch();
   const baseBranch = getBaseBranch();
+  const baseSha = getShaForRef(baseBranch);
+  const headSha = getCurrentSha();
 
   const content = generateDiffMd(
     diffStats,
@@ -273,6 +310,8 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
     planResult,
     branch,
     baseBranch,
+    baseSha,
+    headSha,
   );
   fs.writeFileSync(outputPath, content);
 
@@ -281,6 +320,9 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
   if (run) {
     const driftStatus = parseDriftStatus(content);
     run.drift_status = driftStatus;
+    run.diff_digest = computeDigest(content);
+    run.base_sha = getShaForRef(baseBranch);
+    run.target_sha = getCurrentSha();
 
     const runDir = path.join(REVIEW_RUNS_DIR, run.run_id);
     fs.writeFileSync(
@@ -297,6 +339,8 @@ function generateDiffMd(
   planResult: { status: string; path: string | null; candidates?: any[] },
   branch: string,
   baseBranch: string,
+  baseSha: string,
+  headSha: string,
 ): string {
   const timestamp = new Date().toISOString();
   const run = getCurrentRun();
@@ -307,6 +351,9 @@ function generateDiffMd(
 - **Run ID**: ${run?.run_id || 'unknown'}
 - **Branch**: ${branch}
 - **Base Branch**: ${baseBranch}
+- **Base SHA**: ${baseSha}
+- **Head SHA**: ${headSha}
+- **Diff Range**: ${baseSha}...${headSha}
 - **Generated**: ${timestamp}
 
 ## Diffstat Summary

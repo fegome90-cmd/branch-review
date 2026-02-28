@@ -11,14 +11,35 @@ import {
   determineThirdAgent,
 } from '../lib/stack-detector.js';
 import {
+  computeDigest,
   getChangedFiles,
   getCurrentRun,
+  getCurrentSha,
   getDiffStats,
   getRunDir,
   saveCurrentRun,
   validatePreconditions,
 } from '../lib/utils.js';
 
+/**
+ * Generate or display review plan.
+ *
+ * Resolves plan from docs/plans/ directory based on stack detection,
+ * or uses custom plan specified by `--plan-path`.
+ *
+ * Records plan digest and HEAD SHA for drift detection.
+ *
+ * @param options - Plan command options
+ * @param options.planPath - Path to custom plan file (optional)
+ *
+ * @throws {Error} If plan cannot be resolved or file doesn't exist
+ *
+ * @example
+ * ```bash
+ * reviewctl plan                    # Auto-resolve plan from stack
+ * reviewctl plan --plan-path docs/my-plan.md  # Use custom plan
+ * ```
+ */
 export async function planCommand(options: {
   level: string;
   type: string;
@@ -119,9 +140,16 @@ export async function planCommand(options: {
       JSON.stringify(planJson, null, 2),
     );
 
-    // Update run status
+    // Update run status + digest snapshots
     run.status = 'planning';
+    run.head_sha_at_plan = getCurrentSha();
+    run.plan_digest = computeDigest(planContent);
     saveCurrentRun(run);
+
+    fs.writeFileSync(
+      path.join(runDir, 'run.json'),
+      JSON.stringify(run, null, 2),
+    );
 
     spinner.succeed(chalk.green('Review plan generated'));
 
