@@ -157,10 +157,7 @@ export function parseBiomeSummary(content: string): StaticSummary {
     };
   }
 
-  if (
-    /found\s+0\s+errors?/i.test(content) ||
-    /checked\s+\d+\s+files/i.test(content)
-  ) {
+  if (/found\s+0\s+errors?/i.test(content) || /checked\s+\d+\s+files/i.test(content)) {
     return {
       status: 'PASS',
       reason: 'Biome output parsed successfully',
