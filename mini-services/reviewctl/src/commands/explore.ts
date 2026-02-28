@@ -25,6 +25,25 @@ import {
   saveCurrentRun,
 } from '../lib/utils.js';
 
+/**
+ * Explore repository context and generate diff.
+ *
+ * Generates `explore/context.md` (stack detection, sensitive zones)
+ * and `explore/diff.md` (changed files, drift check).
+ *
+ * Also records HEAD SHA and file digests for drift detection.
+ *
+ * @param options - Explore command options
+ * @param options.mode - Exploration mode: "context" or "diff"
+ *
+ * @throws {Error} If not on review branch or git commands fail
+ *
+ * @example
+ * ```bash
+ * reviewctl explore context  # Generate context.md
+ * reviewctl explore diff     # Generate diff.md
+ * ```
+ */
 export async function exploreCommand(
   type: string,
   options: { force?: boolean },

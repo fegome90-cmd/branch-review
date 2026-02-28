@@ -21,6 +21,25 @@ import {
   validatePreconditions,
 } from '../lib/utils.js';
 
+/**
+ * Generate or display review plan.
+ *
+ * Resolves plan from docs/plans/ directory based on stack detection,
+ * or uses custom plan specified by `--plan-path`.
+ *
+ * Records plan digest and HEAD SHA for drift detection.
+ *
+ * @param options - Plan command options
+ * @param options.planPath - Path to custom plan file (optional)
+ *
+ * @throws {Error} If plan cannot be resolved or file doesn't exist
+ *
+ * @example
+ * ```bash
+ * reviewctl plan                    # Auto-resolve plan from stack
+ * reviewctl plan --plan-path docs/my-plan.md  # Use custom plan
+ * ```
+ */
 export async function planCommand(options: {
   level: string;
   type: string;

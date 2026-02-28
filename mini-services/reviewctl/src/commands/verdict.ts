@@ -11,6 +11,32 @@ import {
   saveCurrentRun,
 } from '../lib/utils.js';
 
+/**
+ * Generate final verdict from ingested agent and static analysis reports.
+ *
+ * Aggregates all findings, warnings, and agent results to produce
+ * a PASS/FAIL verdict with justification.
+ *
+ * **Output**:
+ * - `final.md`: Human-readable summary
+ * - `final.json`: Machine-readable verdict object
+ *
+ * **Verdict logic**:
+ * - FAIL: Any P0 findings exist
+ * - PASS: No P0 findings
+ * - Includes warnings count and breakdown by agent
+ *
+ * @param options - Verdict command options
+ * @param options.json - Output verdict as JSON (default: markdown)
+ *
+ * @throws {Error} If no active run or reports missing
+ *
+ * @example
+ * ```bash
+ * reviewctl verdict         # Generate final.md and final.json
+ * reviewctl verdict --json  # Output verdict as JSON
+ * ```
+ */
 export async function verdictCommand(options: {
   json?: boolean;
   allowIncomplete?: boolean;
