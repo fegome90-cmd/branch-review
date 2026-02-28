@@ -16,6 +16,36 @@ interface StatusOptions {
   last?: boolean;
 }
 
+/**
+ * Display review run status and progress.
+ *
+ * Shows current run state, drift status, agent progress,
+ * static analysis results, warnings, and verdict if available.
+ *
+ * **Output modes**:
+ * - Human-readable (default): Colorized console output
+ * - JSON (`--json`): Machine-readable JSON for API/automation
+ *
+ * **Run selection**:
+ * - Default: Current active run
+ * - `--run-id <id>`: Specific run by ID
+ * - `--last`: Most recently completed run
+ *
+ * @param options - Status command options
+ * @param options.json - Output as JSON instead of human-readable
+ * @param options.runId - Specific run ID to check status for
+ * @param options.last - Show status for most recent completed run
+ *
+ * @throws {Error} If no active run found (and no run-id/last specified)
+ *
+ * @example
+ * ```bash
+ * reviewctl status                    # Current run, human-readable
+ * reviewctl status --json             # Current run, JSON output
+ * reviewctl status --run-id run_20260227_abc  # Specific run
+ * reviewctl status --last             # Most recent completed run
+ * ```
+ */
 export async function statusCommand(options: StatusOptions) {
   const spinner = ora('Resolving review status...').start();
 

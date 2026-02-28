@@ -18,6 +18,31 @@ import {
   saveCurrentRun,
 } from '../lib/utils.js';
 
+/**
+ * Initialize a new review run.
+ *
+ * Creates a review branch, records base/target branch metadata,
+ * generates a run ID, and prepares the run directory structure.
+ *
+ * **Branch creation**:
+ * - Creates review branch from `targetBranch` if `--create` is used
+ * - Branch format: `review/<base>--<target>--<sha>`
+ *
+ * **Deprecation warning**: `--branch` is deprecated, use `--target` instead.
+ *
+ * @param options - Initialization options
+ * @param options.create - Create a new review branch
+ * @param options.branch - Deprecated: use `--target` instead
+ * @param options.base - Base branch for comparison (defaults to main/master)
+ * @param options.target - Target branch to review (defaults to current branch)
+ *
+ * @throws {Error} If base or target branch cannot be resolved
+ *
+ * @example
+ * ```bash
+ * reviewctl init --base main --target dev --create
+ * ```
+ */
 export async function initCommand(options: {
   create?: boolean;
   branch?: string;

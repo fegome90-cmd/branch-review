@@ -37,6 +37,39 @@ function safeWriteSync(filePath: string, content: string): void {
   }
 }
 
+/**
+ * Execute review workflow: generate static and agent handoff requests.
+ *
+ * This is the main entry point for running a review.
+ *
+ * **Workflow phases**:
+ * 1. Validate preconditions (review branch, context, diff, plan)
+ * 2. Prepare run context (detect drift, resolve plan)
+ * 3. Generate static analysis requests (biome, ruff, etc.)
+ * 4. Generate agent handoff requests (code-reviewer, etc.)
+ * 5. Finalize run state
+ *
+ * **Drift protection**:
+ * - Detects drift by comparing HEAD SHA and file digests
+ * - Fails with error unless `--allow-drift` is used
+ * - Sets `drift_status` to `DRIFT_OVERRIDE` when allowed
+ *
+ * @param options - Run command options
+ * @param options.backend - Backend to use (reserved for future use)
+ * @param options.maxAgents - Maximum number of agents to run (1-3)
+ * @param options.timeout - Timeout in minutes per agent
+ * @param options.noPlan - Skip plan resolution
+ * @param options.plan - Whether to resolve plan (default: true)
+ * @param options.allowDrift - Allow drift with override flag
+ *
+ * @throws {Error} If preconditions not met or drift detected (without --allow-drift)
+ *
+ * @example
+ * ```bash
+ * reviewctl run --maxAgents 3
+ * reviewctl run --allow-drift  # for debugging
+ * ```
+ */
 export async function runCommand(options: {
   backend?: string;
   maxAgents: string;
