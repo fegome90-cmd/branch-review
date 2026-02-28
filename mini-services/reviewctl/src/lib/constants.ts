@@ -15,16 +15,44 @@ export const MAX_AGENTS = 3;
 export const DEFAULT_TIMEOUT_MINS = 8;
 export const MAX_OUTPUT_LINES = 120;
 
-// Review levels
+/**
+ * Review depth levels.
+ *
+ * - `auto`: Automatically determine based on diff size
+ * - `quick`: Fast review, focus on critical issues
+ * - `thorough`: Comprehensive review with detailed analysis
+ * - `comprehensive`: Maximum depth, includes edge cases
+ */
 export type ReviewLevel = 'auto' | 'quick' | 'thorough' | 'comprehensive';
 
-// Review types
+/**
+ * Review type based on stack.
+ *
+ * - `auto`: Auto-detect from project files
+ * - `python`: Python-focused review
+ * - `sql`: SQL-focused review
+ * - `general`: Language-agnostic review
+ * - `python+sql`: Combined Python + SQL review
+ */
 export type ReviewType = 'auto' | 'python' | 'sql' | 'general' | 'python+sql';
 
-// Drift status
+/**
+ * Drift status of review run state.
+ *
+ * - `ALIGNED`: No drift detected
+ * - `DRIFT_RISK`: Potential drift (HEAD changed but digests OK)
+ * - `DRIFT_CONFIRMED`: Drift confirmed (digests changed)
+ * - `DRIFT_OVERRIDE`: User approved override with `--allow-drift`
+ */
 export type DriftStatus = 'ALIGNED' | 'DRIFT_RISK' | 'DRIFT_CONFIRMED' | 'DRIFT_OVERRIDE';
 
-// Plan status
+/**
+ * Plan resolution status.
+ *
+ * - `FOUND`: Single plan matched
+ * - `MISSING`: No matching plan found
+ * - `AMBIGUOUS`: Multiple candidates found
+ */
 export type PlanStatus = 'FOUND' | 'MISSING' | 'AMBIGUOUS';
 
 // Agent names
@@ -38,12 +66,35 @@ export const AGENT_NAMES = [
 
 export type AgentName = (typeof AGENT_NAMES)[number];
 
-// Priority levels
+/**
+ * Finding priority levels.
+ *
+ * - `P0`: Blocking issue, must be fixed before merge
+ * - `P1`: Important issue, should be fixed before merge
+ * - `P2`: Minor issue, can be deferred
+ */
 export type Priority = 'P0' | 'P1' | 'P2';
 
-// Verdict
+/**
+ * Review verdict.
+ *
+ * - `PASS`: No blocking issues found
+ * - `FAIL`: Blocking issues found, requires fixes
+ */
 export type Verdict = 'PASS' | 'FAIL';
 
+/**
+ * Run lifecycle status.
+ *
+ * - `pending`: Run initialized, waiting for workflow to start
+ * - `exploring`: Context and diff being generated
+ * - `planning`: Plan being generated
+ * - `running`: Agents are executing
+ * - `pending_ingest`: Agents completed, waiting for ingestion
+ * - `verdict`: Generating final verdict
+ * - `completed`: All reports ingested, ready for verdict
+ * - `failed`: Run failed due to error
+ */
 // Run status
 export type RunStatus =
   | 'pending'
