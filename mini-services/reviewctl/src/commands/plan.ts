@@ -146,7 +146,10 @@ export async function planCommand(options: {
     run.plan_digest = computeDigest(planContent);
     saveCurrentRun(run);
 
-    fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(run, null, 2));
+    fs.writeFileSync(
+      path.join(runDir, 'run.json'),
+      JSON.stringify(run, null, 2),
+    );
 
     spinner.succeed(chalk.green('Review plan generated'));
 

@@ -48,7 +48,9 @@ export function parseRuffSummary(content: string): StaticSummary {
   const errors = readCount(content, /Found\s+(\d+)\s+errors?/i);
 
   // Example line: src/main.py:10:5: E501 line too long
-  const codeMatches = [...content.matchAll(/^[^\n:]+:\d+:\d+:\s+([A-Z]+\d+)/gm)];
+  const codeMatches = [
+    ...content.matchAll(/^[^\n:]+:\d+:\d+:\s+([A-Z]+\d+)/gm),
+  ];
 
   const blockingPrefixes = ['F', 'E', 'W'];
   const warnPrefixes = ['I', 'SIM', 'ARG', 'UP', 'B'];
@@ -157,7 +159,10 @@ export function parseBiomeSummary(content: string): StaticSummary {
     };
   }
 
-  if (/found\s+0\s+errors?/i.test(content) || /checked\s+\d+\s+files/i.test(content)) {
+  if (
+    /found\s+0\s+errors?/i.test(content) ||
+    /checked\s+\d+\s+files/i.test(content)
+  ) {
     return {
       status: 'PASS',
       reason: 'Biome output parsed successfully',

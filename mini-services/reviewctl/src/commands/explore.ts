@@ -132,7 +132,10 @@ async function runContextExplorer(spinner: any, force?: boolean) {
     saveCurrentRun(run);
 
     const runDir = path.join(REVIEW_RUNS_DIR, run.run_id);
-    fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(run, null, 2));
+    fs.writeFileSync(
+      path.join(runDir, 'run.json'),
+      JSON.stringify(run, null, 2),
+    );
   }
 }
 

@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  parseBiomeSummary,
-  parseRuffSummary,
-} from './static-parsers.js';
+import { parseBiomeSummary, parseRuffSummary } from './static-parsers.js';
 
 describe('parseRuffSummary', () => {
   test('returns SKIP when no Python files found', () => {
@@ -37,7 +34,9 @@ describe('parseRuffSummary', () => {
   });
 
   test('returns PASS when only non-blocking warnings are present', () => {
-    const result = parseRuffSummary('src/main.py:10:5: B007 loop control variable not used');
+    const result = parseRuffSummary(
+      'src/main.py:10:5: B007 loop control variable not used',
+    );
     expect(result.status).toBe('PASS');
     expect(result.warningIssues).toBe(1);
     expect(result.blockingIssues).toBe(0);
@@ -81,7 +80,9 @@ describe('parseBiomeSummary', () => {
   });
 
   test('returns UNKNOWN for ambiguous/unrecognized output', () => {
-    const result = parseBiomeSummary('Some random biome output without known patterns');
+    const result = parseBiomeSummary(
+      'Some random biome output without known patterns',
+    );
     expect(result.status).toBe('UNKNOWN');
     expect(result.issues).toBe(0);
   });

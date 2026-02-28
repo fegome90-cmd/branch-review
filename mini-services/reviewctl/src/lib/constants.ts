@@ -44,7 +44,11 @@ export type ReviewType = 'auto' | 'python' | 'sql' | 'general' | 'python+sql';
  * - `DRIFT_CONFIRMED`: Drift confirmed (digests changed)
  * - `DRIFT_OVERRIDE`: User approved override with `--allow-drift`
  */
-export type DriftStatus = 'ALIGNED' | 'DRIFT_RISK' | 'DRIFT_CONFIRMED' | 'DRIFT_OVERRIDE';
+export type DriftStatus =
+  | 'ALIGNED'
+  | 'DRIFT_RISK'
+  | 'DRIFT_CONFIRMED'
+  | 'DRIFT_OVERRIDE';
 
 /**
  * Plan resolution status.

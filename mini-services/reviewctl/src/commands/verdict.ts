@@ -287,14 +287,25 @@ interface StaticGateEvaluation {
   blocking: RequiredStaticResult[];
 }
 
-export function normalizeAgentReviewStatus(rawStatus: unknown): 'PASS' | 'FAIL' | 'PENDING' {
+export function normalizeAgentReviewStatus(
+  rawStatus: unknown,
+): 'PASS' | 'FAIL' | 'PENDING' {
   const normalized = String(rawStatus || '').toUpperCase();
 
-  if (normalized === 'DONE' || normalized === 'PASS' || normalized === 'COMPLETED') {
+  if (
+    normalized === 'DONE' ||
+    normalized === 'PASS' ||
+    normalized === 'COMPLETED'
+  ) {
     return 'PASS';
   }
 
-  if (normalized === 'FAIL' || normalized === 'FAILED' || normalized === 'INVALID' || normalized === 'ERROR') {
+  if (
+    normalized === 'FAIL' ||
+    normalized === 'FAILED' ||
+    normalized === 'INVALID' ||
+    normalized === 'ERROR'
+  ) {
     return 'FAIL';
   }
 
@@ -682,7 +693,9 @@ ${
 |-------|----------|
 `;
 
-    for (const [agent, warningCount] of Object.entries(aggregated.warningsByAgent)) {
+    for (const [agent, warningCount] of Object.entries(
+      aggregated.warningsByAgent,
+    )) {
       md += `| ${agent} | ${warningCount} |\n`;
     }
   }

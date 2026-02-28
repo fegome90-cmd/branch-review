@@ -75,7 +75,9 @@ export function getCurrentBranch(): string {
       encoding: 'utf-8',
     }).trim();
   } catch (_error) {
-    throw new Error('Failed to get current branch. Are you in a git repository?');
+    throw new Error(
+      'Failed to get current branch. Are you in a git repository?',
+    );
   }
 }
 
@@ -160,7 +162,7 @@ export function isValidGitRef(ref: string): boolean {
   }
 
   // Allow typical git ref characters: a-z A-Z 0-9 . / _ - @
-  const validPattern = /^[a-zA-Z0-9._\/@-]+$/;
+  const validPattern = /^[a-zA-Z0-9._/@-]+$/;
   return validPattern.test(ref);
 }
 
@@ -203,7 +205,7 @@ export function getShaForRef(ref: string): string {
  * ```
  */
 export function slugifyBranchName(branch: string): string {
-  return branch.replace(/[\/\s]+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '_');
+  return branch.replace(/[/\s]+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 /**
@@ -225,7 +227,7 @@ export function slugifyBranchName(branch: string): string {
 export function buildReviewBranchName(
   baseBranch: string,
   targetBranch: string,
-  shortSha: string
+  shortSha: string,
 ): string {
   return `review/${slugifyBranchName(baseBranch)}--${slugifyBranchName(targetBranch)}--${shortSha}`;
 }
@@ -380,11 +382,17 @@ export function copyExplorerFiles(runId: string): void {
   const { context, diff } = explorerFilesExist();
 
   if (context) {
-    fs.copyFileSync(path.join(EXPLORE_DIR, 'context.md'), path.join(exploreDest, 'context.md'));
+    fs.copyFileSync(
+      path.join(EXPLORE_DIR, 'context.md'),
+      path.join(exploreDest, 'context.md'),
+    );
   }
 
   if (diff) {
-    fs.copyFileSync(path.join(EXPLORE_DIR, 'diff.md'), path.join(exploreDest, 'diff.md'));
+    fs.copyFileSync(
+      path.join(EXPLORE_DIR, 'diff.md'),
+      path.join(exploreDest, 'diff.md'),
+    );
   }
 }
 
@@ -398,7 +406,7 @@ export function getDiffStats(): {
     const baseBranch = getBaseBranch();
     const diffstat = execSync(
       `git diff --shortstat ${baseBranch}...HEAD 2>/dev/null || git diff --shortstat HEAD~1`,
-      { encoding: 'utf-8' }
+      { encoding: 'utf-8' },
     );
 
     const filesMatch = diffstat.match(/(\d+) files? changed/);
@@ -421,7 +429,7 @@ export function getChangedFiles(): string[] {
     const baseBranch = getBaseBranch();
     const files = execSync(
       `git diff --name-only ${baseBranch}...HEAD 2>/dev/null || git diff --name-only HEAD~1`,
-      { encoding: 'utf-8' }
+      { encoding: 'utf-8' },
     );
     return files
       .trim()
@@ -434,7 +442,13 @@ export function getChangedFiles(): string[] {
 
 // Validate preconditions
 export function validatePreconditions(
-  required: ('review_branch' | 'context' | 'diff' | 'plan_resolved' | 'no_drift')[]
+  required: (
+    | 'review_branch'
+    | 'context'
+    | 'diff'
+    | 'plan_resolved'
+    | 'no_drift'
+  )[],
 ): void {
   const errors: string[] = [];
 
@@ -467,7 +481,9 @@ export function validatePreconditions(
   }
 
   if (errors.length > 0) {
-    throw new Error(`Precondition failures:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
+    throw new Error(
+      `Precondition failures:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
+    );
   }
 }
 

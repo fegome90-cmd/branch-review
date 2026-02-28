@@ -173,21 +173,34 @@ async function executeRunWorkflow(
   }
   if (run.context_digest && !currentContextDigest) {
     driftReasons.push('context snapshot missing');
-  } else if (run.context_digest && currentContextDigest && run.context_digest !== currentContextDigest) {
+  } else if (
+    run.context_digest &&
+    currentContextDigest &&
+    run.context_digest !== currentContextDigest
+  ) {
     driftReasons.push('context digest changed since explore');
   }
   if (run.diff_digest && !currentDiffDigest) {
     driftReasons.push('diff snapshot missing');
-  } else if (run.diff_digest && currentDiffDigest && run.diff_digest !== currentDiffDigest) {
+  } else if (
+    run.diff_digest &&
+    currentDiffDigest &&
+    run.diff_digest !== currentDiffDigest
+  ) {
     driftReasons.push('diff digest changed since explore');
   }
   if (run.plan_digest && !currentPlanDigest) {
     driftReasons.push('plan snapshot missing');
-  } else if (run.plan_digest && currentPlanDigest && run.plan_digest !== currentPlanDigest) {
+  } else if (
+    run.plan_digest &&
+    currentPlanDigest &&
+    run.plan_digest !== currentPlanDigest
+  ) {
     driftReasons.push('plan digest changed since planning');
   }
 
-  const driftDetected = run.drift_status === 'DRIFT_CONFIRMED' || driftReasons.length > 0;
+  const driftDetected =
+    run.drift_status === 'DRIFT_CONFIRMED' || driftReasons.length > 0;
 
   if (driftDetected && !options.allowDrift) {
     run.drift_status = 'DRIFT_CONFIRMED';
