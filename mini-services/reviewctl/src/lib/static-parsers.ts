@@ -169,6 +169,17 @@ export function parseBiomeSummary(content: string): StaticSummary {
     /found\s+0\s+errors?/i.test(content) ||
     /checked\s+\d+\s+files/i.test(content)
   ) {
+    // Preserve warning counts in PASS path
+    if (warnings > 0) {
+      return {
+        status: 'PASS',
+        reason: `Biome warnings only: ${warnings} (non-blocking policy)`,
+        issues: warnings,
+        blockingIssues: 0,
+        warningIssues: warnings,
+      };
+    }
+
     return {
       status: 'PASS',
       reason: 'Biome output parsed successfully',
