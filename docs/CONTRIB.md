@@ -140,7 +140,7 @@ bun run typecheck:mini-services
 
 ## Project Structure
 
-```
+```text
 branch-review/
 ├── src/
 │   ├── app/              # Next.js App Router pages

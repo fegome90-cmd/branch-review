@@ -8,7 +8,7 @@ shadcn/ui component library (48 files). Based on Radix UI primitives with Tailwi
 
 ## Structure
 
-```
+```text
 src/components/ui/
 ├── button.tsx
 ├── dialog.tsx

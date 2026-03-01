@@ -38,15 +38,16 @@
 
 | Tool                             | Version | Purpose                          |
 | -------------------------------- | ------- | -------------------------------- |
-| [Bun](https://bun.sh)            | ≥1.0.0  | Runtime and package manager      |
+| [Bun](https://bun.sh)            | v1.3+   | Runtime and package manager      |
 | [Git](https://git-scm.com)       | ≥2.0    | Version control                  |
 | [PM2](https://pm2.keymetrics.io) | ≥5.0    | Production deployment (optional) |
 
 **For Python projects** (optional):
-| Tool | Purpose |
-|------|---------|
-| [Ruff](https://docs.astral.sh/ruff/) | Python linter |
-| [Pyrefly](https://pyrefly.org/) | Python type checker |
+
+| Tool                                 | Purpose             |
+| ------------------------------------ | ------------------- |
+| [Ruff](https://docs.astral.sh/ruff/) | Python linter       |
+| [Pyrefly](https://pyrefly.org/)      | Python type checker |
 
 ## Quick Start
 
@@ -116,7 +117,7 @@ cat report.md | reviewctl ingest --agent code-simplifier --input -
 
 ## Workflow
 
-```
+```text
 init → explore context → explore diff → plan → run → ingest → verdict → merge
 ```
 
@@ -165,7 +166,7 @@ curl -b "review_api_token=your-token" http://localhost:3001/api/review/run
 
 ## Project Structure
 
-```
+```text
 src/
 ├── app/
 │   ├── api/review/      # REST endpoints

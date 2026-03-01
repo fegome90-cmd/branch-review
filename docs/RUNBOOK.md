@@ -216,13 +216,13 @@ If `REVIEW_API_TOKEN` is compromised:
 
 Provide token via header:
 
-```
+```http
 X-Review-Token: <your-token>
 ```
 
 Or via cookie:
 
-```
+```http
 Cookie: review_api_token=<your-token>
 ```
 

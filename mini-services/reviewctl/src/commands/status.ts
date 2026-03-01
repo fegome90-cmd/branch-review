@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
+import type { RunMetadata } from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
 import {
   getCurrentRun,
@@ -114,7 +115,7 @@ export async function statusCommand(options: StatusOptions) {
   }
 }
 
-function resolveRun(options: StatusOptions): any | null {
+function resolveRun(options: StatusOptions): RunMetadata | null {
   if (options.runId) {
     return getRunById(options.runId);
   }
@@ -126,7 +127,7 @@ function resolveRun(options: StatusOptions): any | null {
   return getCurrentRun();
 }
 
-function buildStatus(runDir: string, run: any) {
+function buildStatus(runDir: string, run: RunMetadata) {
   const exploreDir = path.join(runDir, 'explore');
   const reportsDir = path.join(runDir, 'reports');
   const tasksDir = path.join(runDir, 'tasks');
@@ -169,11 +170,17 @@ function buildStatus(runDir: string, run: any) {
     try {
       const statusJson = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
       const status = String(statusJson.status || '').toUpperCase();
-      if (status === 'PASS' || status === 'DONE') {
+      // SKIP counts as PASS for required statics (non-blocking policy)
+      if (status === 'PASS' || status === 'DONE' || status === 'SKIP') {
         requiredPassed++;
       }
+      // Log status for observability
+      console.log(chalk.gray(`  [static] ${tool.name}: ${status}`));
     } catch {
-      // ignore malformed status
+      // Log malformed status for debugging
+      console.log(
+        chalk.yellow(`  [static] ${tool.name}: malformed status file`),
+      );
     }
   }
 

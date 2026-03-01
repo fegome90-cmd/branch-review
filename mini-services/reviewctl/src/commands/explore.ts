@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
-import ora from 'ora';
+import ora, { type Ora } from 'ora';
 import { EXPLORE_DIR, REVIEW_RUNS_DIR } from '../lib/constants.js';
-import { resolvePlan } from '../lib/plan-resolver.js';
+import { type PlanCandidate, resolvePlan } from '../lib/plan-resolver.js';
 import {
   detectSensitiveZones,
   detectStack,
@@ -93,7 +93,7 @@ export async function exploreCommand(
   }
 }
 
-async function runContextExplorer(spinner: any, force?: boolean) {
+async function runContextExplorer(spinner: Ora, force?: boolean) {
   const outputPath = path.join(EXPLORE_DIR, 'context.md');
 
   if (fs.existsSync(outputPath) && !force) {
@@ -130,12 +130,6 @@ async function runContextExplorer(spinner: any, force?: boolean) {
     run.head_sha_at_explore = getCurrentSha();
     run.context_digest = computeDigest(content);
     saveCurrentRun(run);
-
-    const runDir = path.join(REVIEW_RUNS_DIR, run.run_id);
-    fs.writeFileSync(
-      path.join(runDir, 'run.json'),
-      JSON.stringify(run, null, 2),
-    );
   }
 }
 
@@ -283,7 +277,7 @@ function getStaticTools(
   return tools;
 }
 
-async function runDiffExplorer(spinner: any, force?: boolean) {
+async function runDiffExplorer(spinner: Ora, force?: boolean) {
   const outputPath = path.join(EXPLORE_DIR, 'diff.md');
 
   if (fs.existsSync(outputPath) && !force) {
@@ -300,7 +294,9 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
 
   spinner.text = 'Generating diff analysis...';
   const branch = getCurrentBranch();
-  const baseBranch = getBaseBranch();
+  const run = getCurrentRun();
+  // Use stored base_branch if available, otherwise detect
+  const baseBranch = run?.base_branch || getBaseBranch();
   const baseSha = getShaForRef(baseBranch);
   const headSha = getCurrentSha();
 
@@ -316,7 +312,6 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
   fs.writeFileSync(outputPath, content);
 
   // Update run metadata with drift status
-  const run = getCurrentRun();
   if (run) {
     const driftStatus = parseDriftStatus(content);
     run.drift_status = driftStatus;
@@ -336,7 +331,11 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
 function generateDiffMd(
   diffStats: { files: number; added: number; removed: number },
   changedFiles: string[],
-  planResult: { status: string; path: string | null; candidates?: any[] },
+  planResult: {
+    status: string;
+    path: string | null;
+    candidates?: PlanCandidate[];
+  },
   branch: string,
   baseBranch: string,
   baseSha: string,

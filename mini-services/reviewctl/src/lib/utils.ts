@@ -331,7 +331,9 @@ export function getLastRun(): RunMetadata | null {
 /**
  * Save or update the current run metadata.
  *
- * Writes to both `current.json` and the run-specific `run.json` file.
+ * Writes to both:
+ * - `current.json`: Pointer to active run (used by getCurrentRun)
+ * - `run.json`: Run-specific metadata in the run directory
  *
  * @param run - Run metadata to save
  *
@@ -344,7 +346,13 @@ export function getLastRun(): RunMetadata | null {
  */
 export function saveCurrentRun(run: RunMetadata): void {
   ensureDir(REVIEW_RUNS_DIR);
-  const runFile = path.join(REVIEW_RUNS_DIR, 'current.json');
+  const currentFile = path.join(REVIEW_RUNS_DIR, 'current.json');
+  fs.writeFileSync(currentFile, JSON.stringify(run, null, 2));
+
+  // Also write to run-specific file for persistence
+  const runDir = getRunDir(run.run_id);
+  ensureDir(runDir);
+  const runFile = path.join(runDir, 'run.json');
   fs.writeFileSync(runFile, JSON.stringify(run, null, 2));
 }
 

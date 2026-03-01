@@ -22,7 +22,18 @@ export function readCount(content: string, pattern: RegExp): number {
 }
 
 /**
- * Parse Ruff output and determine status
+ * Parse Ruff output and determine status.
+ *
+ * Classification logic:
+ * - Blocking: Codes starting with F, E, W (Fatal, Error, Warning)
+ * - Non-blocking: Codes starting with I, SIM, ARG, UP, B (Style/Refactor hints)
+ * - Unknown codes default to blocking for safety
+ *
+ * Note: This classification is project-specific and may differ from
+ * Ruff's own severity levels. Adjust prefixes as needed for your policy.
+ *
+ * @param content - Raw Ruff output string
+ * @returns StaticSummary with status, counts, and breakdown
  */
 export function parseRuffSummary(content: string): StaticSummary {
   if (/warning:\s+No Python files found/i.test(content)) {
