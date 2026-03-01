@@ -296,3 +296,67 @@ describe('Buffer truncation', () => {
     expect(result.output).not.toContain('[truncated]');
   });
 });
+
+describe('PR command', () => {
+  it('returns success for PR_EXISTS (idempotent)', async () => {
+    const service = new ReviewCommandService(async () => ({
+      ok: false,
+      output: 'Error code: PR_EXISTS\nhttps://github.com/org/repo/pull/1',
+      timedOut: false,
+    }));
+
+    const result = await service.execute(
+      { command: 'pr', args: { title: 'Test PR', body: 'Test body' } },
+      { clientId: 'client' },
+    );
+
+    expect(result.output).toBe('PR already exists');
+    expect(result.code).toBe('PR_EXISTS');
+  });
+
+  it('throws error for GH_NOT_AUTHENTICATED', async () => {
+    const service = new ReviewCommandService(async () => ({
+      ok: false,
+      output: 'Error code: GH_NOT_AUTHENTICATED',
+      timedOut: false,
+    }));
+
+    let capturedError: unknown;
+    try {
+      await service.execute(
+        { command: 'pr', args: { title: 'Test', body: 'Body' } },
+        { clientId: 'client' },
+      );
+    } catch (error) {
+      capturedError = error;
+    }
+
+    expect(capturedError).toBeInstanceOf(ReviewCommandError);
+    expect((capturedError as ReviewCommandError).status).toBe(503);
+    expect((capturedError as ReviewCommandError).code).toBe(
+      'GH_NOT_AUTHENTICATED',
+    );
+  });
+
+  it('throws error for NO_COMMITS', async () => {
+    const service = new ReviewCommandService(async () => ({
+      ok: false,
+      output: 'Error code: NO_COMMITS',
+      timedOut: false,
+    }));
+
+    let capturedError: unknown;
+    try {
+      await service.execute(
+        { command: 'pr', args: { title: 'Test', body: 'Body' } },
+        { clientId: 'client' },
+      );
+    } catch (error) {
+      capturedError = error;
+    }
+
+    expect(capturedError).toBeInstanceOf(ReviewCommandError);
+    expect((capturedError as ReviewCommandError).status).toBe(400);
+    expect((capturedError as ReviewCommandError).code).toBe('NO_COMMITS');
+  });
+});

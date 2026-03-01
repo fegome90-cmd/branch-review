@@ -59,10 +59,14 @@ export const commandSchema = z.discriminatedUnion('command', [
 export type CommandPayload = z.infer<typeof commandSchema>;
 
 // PR error code to HTTP status mapping
+// Success codes for idempotent operations (not errors)
+const PR_SUCCESS_CODES = {
+  PR_EXISTS: { message: 'PR already exists' },
+} as const;
+
 const PR_ERROR_CODE_MAP: Record<string, { status: number; message: string }> = {
   GH_NOT_AUTHENTICATED: { status: 503, message: 'gh CLI not authenticated' },
   GH_CLI_ERROR: { status: 500, message: 'gh CLI error' },
-  PR_EXISTS: { status: 200, message: 'PR already exists' },
   NO_COMMITS: { status: 400, message: 'No commits to create PR' },
   WORKING_TREE_DIRTY: {
     status: 400,
@@ -356,10 +360,22 @@ export class ReviewCommandService {
       }
 
       if (!result.ok) {
-        // Try to detect PR-specific error codes from output
+        // Try to detect PR-specific codes from output
         const codeMatch = output.match(/Error code:\s*([A-Z_]+)/);
         if (codeMatch && payload.command === 'pr') {
           const errorCode = codeMatch[1];
+
+          // Check success codes first (idempotent operations)
+          if (PR_SUCCESS_CODES[errorCode as keyof typeof PR_SUCCESS_CODES]) {
+            return {
+              output:
+                PR_SUCCESS_CODES[errorCode as keyof typeof PR_SUCCESS_CODES]
+                  .message,
+              code: errorCode,
+            };
+          }
+
+          // Then check error codes
           const mapped = PR_ERROR_CODE_MAP[errorCode];
           if (mapped) {
             throw new ReviewCommandError(
