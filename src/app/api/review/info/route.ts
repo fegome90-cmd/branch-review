@@ -99,6 +99,13 @@ export async function GET() {
       { code: 'COMMAND_IN_PROGRESS', httpStatus: 409 },
       { code: 'COMMAND_TIMEOUT', httpStatus: 503 },
       { code: 'COMMAND_FAILED', httpStatus: 500 },
+      // PR-specific error codes
+      { code: 'GH_NOT_AUTHENTICATED', httpStatus: 503 },
+      { code: 'GH_CLI_ERROR', httpStatus: 500 },
+      { code: 'PR_EXISTS', httpStatus: 200 },
+      { code: 'NO_COMMITS', httpStatus: 400 },
+      { code: 'WORKING_TREE_DIRTY', httpStatus: 400 },
+      { code: 'INVALID_BRANCH_NAME', httpStatus: 400 },
       { code: 'MISCONFIGURED', httpStatus: 503 },
       { code: 'INTERNAL_ERROR', httpStatus: 500 },
     ],

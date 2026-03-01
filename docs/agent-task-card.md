@@ -299,12 +299,14 @@ curl -X DELETE http://localhost:3001/api/review/token
 
 ### Errores específicos del comando `pr`
 
-| Código                 | HTTP | Causa                       | Acción sugerida                      |
-| ---------------------- | ---- | --------------------------- | ------------------------------------ |
-| `GH_NOT_AUTHENTICATED` | 503  | `gh` CLI sin autenticar     | Ejecutar `gh auth login` en servidor |
-| `PR_EXISTS`            | 200  | PR ya existe para el branch | Usar URL retornada                   |
-| `NO_COMMITS`           | 400  | Branch sin commits nuevos   | Hacer commits antes                  |
-| `WORKING_TREE_DIRTY`   | 400  | Cambios sin commit          | Commit o stash cambios               |
+| Código                 | HTTP | Causa                            | Acción sugerida                      |
+| ---------------------- | ---- | -------------------------------- | ------------------------------------ |
+| `GH_NOT_AUTHENTICATED` | 503  | `gh` CLI sin autenticar          | Ejecutar `gh auth login` en servidor |
+| `GH_CLI_ERROR`         | 500  | Error al ejecutar `gh pr create` | Revisar salida del CLI y reintentar  |
+| `PR_EXISTS`            | 200  | PR ya existe para el branch      | Usar URL retornada                   |
+| `NO_COMMITS`           | 400  | Branch sin commits nuevos        | Hacer commits antes                  |
+| `WORKING_TREE_DIRTY`   | 400  | Cambios sin commit               | Commit o stash cambios               |
+| `INVALID_BRANCH_NAME`  | 400  | Nombre de branch inválido        | Usar solo alfanuméricos, \_, /, ., - |
 
 ---
 

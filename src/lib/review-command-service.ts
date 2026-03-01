@@ -1,5 +1,5 @@
-import { spawn } from 'child_process';
-import path from 'path';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { z } from 'zod';
 
 const COMMAND_TIMEOUT_MS = 120000;
@@ -19,18 +19,55 @@ export const ALLOWED_COMMANDS = [
   'verdict',
 ] as const;
 
-export const commandSchema = z.object({
-  command: z.enum(ALLOWED_COMMANDS),
-  args: z
-    .record(
-      z.string().regex(/^[a-zA-Z0-9-]+$/),
-      z.union([z.string().max(500), z.number(), z.boolean()]),
-    )
-    .default({})
-    .refine((args) => Object.keys(args).length <= 20, 'Too many args (max 20)'),
+// PR command allows longer body (up to 10000 chars)
+const prArgsSchema = z.object({
+  title: z.string().min(1).max(500),
+  body: z.string().min(1).max(10000),
+  base: z.string().min(1).max(255).optional(),
+  draft: z.boolean().optional(),
 });
 
+// Generic args for other commands (500 char limit)
+const genericArgsSchema = z
+  .record(
+    z.string().regex(/^[a-zA-Z0-9-]+$/),
+    z.union([z.string().max(500), z.number(), z.boolean()]),
+  )
+  .default({})
+  .refine((args) => Object.keys(args).length <= 20, 'Too many args (max 20)');
+
+// Discriminated union for command-specific validation
+export const commandSchema = z.discriminatedUnion('command', [
+  z.object({ command: z.literal('pr'), args: prArgsSchema }),
+  z.object({
+    command: z.enum([
+      'init',
+      'explore',
+      'plan',
+      'run',
+      'ingest',
+      'merge',
+      'cleanup',
+      'verdict',
+    ]),
+    args: genericArgsSchema,
+  }),
+]);
+
 export type CommandPayload = z.infer<typeof commandSchema>;
+
+// PR error code to HTTP status mapping
+const PR_ERROR_CODE_MAP: Record<string, { status: number; message: string }> = {
+  GH_NOT_AUTHENTICATED: { status: 503, message: 'gh CLI not authenticated' },
+  GH_CLI_ERROR: { status: 500, message: 'gh CLI error' },
+  PR_EXISTS: { status: 200, message: 'PR already exists' },
+  NO_COMMITS: { status: 400, message: 'No commits to create PR' },
+  WORKING_TREE_DIRTY: {
+    status: 400,
+    message: 'Working tree has uncommitted changes',
+  },
+  INVALID_BRANCH_NAME: { status: 400, message: 'Invalid branch name' },
+};
 
 type CommandResult = {
   ok: boolean;
@@ -195,6 +232,20 @@ export class ReviewCommandService {
       }
 
       if (!result.ok) {
+        // Try to detect PR-specific error codes from output
+        const codeMatch = output.match(/Error code:\s*([A-Z_]+)/);
+        if (codeMatch && payload.command === 'pr') {
+          const errorCode = codeMatch[1];
+          const mapped = PR_ERROR_CODE_MAP[errorCode];
+          if (mapped) {
+            throw new ReviewCommandError(
+              mapped.status,
+              errorCode,
+              mapped.message,
+              { output },
+            );
+          }
+        }
         throw new ReviewCommandError(500, 'COMMAND_FAILED', 'Command failed', {
           output,
         });

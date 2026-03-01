@@ -1,9 +1,25 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import chalk from 'chalk';
 import ora from 'ora';
 
 const MAX_TITLE_LENGTH = 500;
 const MAX_BODY_LENGTH = 10000;
+
+// Allowed characters for branch names (security validation)
+const BRANCH_NAME_REGEX = /^[a-zA-Z0-9_/.-]+$/;
+
+function validateBranchName(branch: string): void {
+  if (!BRANCH_NAME_REGEX.test(branch)) {
+    console.error(chalk.red(`Invalid branch name: ${branch}`));
+    console.error(
+      chalk.gray(
+        '  Only alphanumeric, underscore, slash, dot, and hyphen allowed',
+      ),
+    );
+    console.error(chalk.gray('  Error code: INVALID_BRANCH_NAME'));
+    process.exit(1);
+  }
+}
 
 export async function prCommand(options: {
   title: string;
@@ -36,26 +52,34 @@ export async function prCommand(options: {
     // Check gh auth
     spinner.text = 'Checking gh authentication...';
     try {
-      execSync('gh auth status 2>/dev/null', { stdio: 'pipe' });
+      execFileSync('gh', ['auth', 'status'], { stdio: 'pipe' });
     } catch {
       spinner.fail(chalk.red('gh CLI not authenticated. Run: gh auth login'));
       console.error(chalk.gray('  Error code: GH_NOT_AUTHENTICATED'));
       process.exit(1);
     }
 
-    // Check working tree is clean
+    // Check working tree is clean (including untracked files)
     spinner.text = 'Checking working tree...';
     try {
-      execSync('git diff-index --quiet HEAD --', { stdio: 'pipe' });
+      const status = execFileSync('git', ['status', '--porcelain'], {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+
+      if (status) {
+        spinner.fail(chalk.red('Working tree has uncommitted changes'));
+        console.error(chalk.gray('  Commit or stash changes first'));
+        console.error(chalk.gray('  Error code: WORKING_TREE_DIRTY'));
+        process.exit(1);
+      }
     } catch {
-      spinner.fail(chalk.red('Working tree has uncommitted changes'));
-      console.error(chalk.gray('  Commit or stash changes first'));
-      console.error(chalk.gray('  Error code: WORKING_TREE_DIRTY'));
+      spinner.fail(chalk.red('Failed to check working tree'));
       process.exit(1);
     }
 
     // Get current branch
-    const currentBranch = execSync('git branch --show-current', {
+    const currentBranch = execFileSync('git', ['branch', '--show-current'], {
       encoding: 'utf-8',
     }).trim();
 
@@ -67,12 +91,17 @@ export async function prCommand(options: {
     // Determine base branch
     const baseBranch = options.base || 'main';
 
-    // Check for commits
+    // Validate base branch name (security: prevent injection)
+    validateBranchName(baseBranch);
+
+    // Check for commits (safe: using execFileSync with arg array)
     spinner.text = 'Checking for commits...';
     try {
-      const commits = execSync(`git log ${baseBranch}..HEAD --oneline`, {
-        encoding: 'utf-8',
-      }).trim();
+      const commits = execFileSync(
+        'git',
+        ['log', `${baseBranch}..HEAD`, '--oneline'],
+        { encoding: 'utf-8' },
+      ).trim();
 
       if (!commits) {
         spinner.fail(
@@ -93,9 +122,11 @@ export async function prCommand(options: {
     spinner.text = 'Checking for existing PR...';
     let existingPrUrl: string | null = null;
     try {
-      existingPrUrl = execSync(`gh pr view --json url -q '.url' 2>/dev/null`, {
-        encoding: 'utf-8',
-      }).trim();
+      existingPrUrl = execFileSync(
+        'gh',
+        ['pr', 'view', '--json', 'url', '-q', '.url'],
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+      ).trim();
     } catch {
       // No existing PR, continue
     }
@@ -108,7 +139,7 @@ export async function prCommand(options: {
       return;
     }
 
-    // Create PR
+    // Create PR (safe: using execFileSync with arg array)
     spinner.text = 'Creating pull request...';
     const args = [
       'pr',
@@ -126,13 +157,10 @@ export async function prCommand(options: {
     }
 
     try {
-      const prUrl = execSync(
-        `gh ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`,
-        {
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        },
-      ).trim();
+      const prUrl = execFileSync('gh', args, {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
 
       spinner.succeed(chalk.green('Pull request created'));
       console.log(chalk.gray(`  Branch: ${currentBranch} → ${baseBranch}`));
