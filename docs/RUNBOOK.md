@@ -184,8 +184,11 @@ pm2 delete branch-review
 # View migration status
 bunx prisma migrate status
 
-# Rollback last migration (dev only)
-bunx prisma migrate rollback
+# Recreate DB from migrations (dev only, destructive)
+bunx prisma migrate reset --force
+
+# Or reconcile migration state without re-running SQL
+# bunx prisma migrate resolve --rolled-back <migration_name>
 ```
 
 ### Token Rotation

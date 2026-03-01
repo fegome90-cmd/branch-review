@@ -101,7 +101,7 @@ export function parseRuffSummary(content: string): StaticSummary {
     return {
       status: 'PASS',
       reason: `Ruff warnings only: ${warningIssues} (non-blocking policy)`,
-      issues: warningIssues,
+      issues: totalIssues,
       blockingIssues,
       warningIssues,
     };

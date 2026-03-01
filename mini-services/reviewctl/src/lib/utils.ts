@@ -181,8 +181,13 @@ export function isValidGitRef(ref: string): boolean {
  * ```
  */
 export function getShaForRef(ref: string): string {
+  // Reject refs that look like git options
+  if (ref.startsWith('-')) {
+    return 'unknown';
+  }
   try {
-    return execFileSync('git', ['rev-parse', '--short', ref], {
+    // Use -- to explicitly mark end of options
+    return execFileSync('git', ['rev-parse', '--short', '--', ref], {
       encoding: 'utf-8',
     }).trim();
   } catch {

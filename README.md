@@ -62,7 +62,7 @@ bun run dev
 # → Dashboard available at http://localhost:3000
 
 # Or use CLI directly
-bun reviewctl help
+bun run reviewctl help
 ```
 
 ## CLI Commands
