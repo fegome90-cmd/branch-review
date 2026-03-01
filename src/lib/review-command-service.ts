@@ -1,9 +1,11 @@
-import { spawn } from 'child_process';
-import path from 'path';
+import { spawn } from 'node:child_process';
+import { existsSync, realpathSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
 
 const COMMAND_TIMEOUT_MS = 120000;
 const MAX_OUTPUT_CHARS = 12000;
+const MAX_BUFFER_SIZE = 50000;
 const RATE_LIMIT_MAX_REQUESTS = 10;
 const RATE_LIMIT_WINDOW_MS = 60000;
 
@@ -13,23 +15,65 @@ export const ALLOWED_COMMANDS = [
   'plan',
   'run',
   'ingest',
+  'pr',
   'merge',
   'cleanup',
   'verdict',
 ] as const;
 
-export const commandSchema = z.object({
-  command: z.enum(ALLOWED_COMMANDS),
-  args: z
-    .record(
-      z.string().regex(/^[a-zA-Z0-9-]+$/),
-      z.union([z.string().max(500), z.number(), z.boolean()]),
-    )
-    .default({})
-    .refine((args) => Object.keys(args).length <= 20, 'Too many args (max 20)'),
+// PR command allows longer body (up to 10000 chars)
+const prArgsSchema = z.object({
+  title: z.string().min(1).max(500),
+  body: z.string().min(1).max(10000),
+  base: z.string().min(1).max(255).optional(),
+  draft: z.boolean().optional(),
 });
 
+// Generic args for other commands (500 char limit)
+const genericArgsSchema = z
+  .record(
+    z.string().regex(/^[a-zA-Z0-9-]+$/),
+    z.union([z.string().max(500), z.number(), z.boolean()]),
+  )
+  .default({})
+  .refine((args) => Object.keys(args).length <= 20, 'Too many args (max 20)');
+
+// Discriminated union for command-specific validation
+export const commandSchema = z.discriminatedUnion('command', [
+  z.object({ command: z.literal('pr'), args: prArgsSchema }),
+  z.object({
+    command: z.enum([
+      'init',
+      'explore',
+      'plan',
+      'run',
+      'ingest',
+      'merge',
+      'cleanup',
+      'verdict',
+    ]),
+    args: genericArgsSchema,
+  }),
+]);
+
 export type CommandPayload = z.infer<typeof commandSchema>;
+
+// PR error code to HTTP status mapping
+// Success codes for idempotent operations (not errors)
+const PR_SUCCESS_CODES = {
+  PR_EXISTS: { message: 'PR already exists' },
+} as const;
+
+const PR_ERROR_CODE_MAP: Record<string, { status: number; message: string }> = {
+  GH_NOT_AUTHENTICATED: { status: 503, message: 'gh CLI not authenticated' },
+  GH_CLI_ERROR: { status: 500, message: 'gh CLI error' },
+  NO_COMMITS: { status: 400, message: 'No commits to create PR' },
+  WORKING_TREE_DIRTY: {
+    status: 400,
+    message: 'Working tree has uncommitted changes',
+  },
+  INVALID_BRANCH_NAME: { status: 400, message: 'Invalid branch name' },
+};
 
 type CommandResult = {
   ok: boolean;
@@ -37,10 +81,15 @@ type CommandResult = {
   timedOut: boolean;
 };
 
-type CommandRunner = (cliArgs: string[], timeoutMs: number) => Promise<CommandResult>;
+type CommandRunner = (
+  cliArgs: string[],
+  timeoutMs: number,
+  cwd?: string,
+) => Promise<CommandResult>;
 
 type ExecuteContext = {
   clientId: string;
+  repoPath?: string;
 };
 
 export class ReviewCommandError extends Error {
@@ -60,7 +109,9 @@ class InMemoryRateLimiter {
 
   isAllowed(identifier: string, now: number) {
     const timestamps = this.requests.get(identifier) || [];
-    const recent = timestamps.filter((time) => now - time < RATE_LIMIT_WINDOW_MS);
+    const recent = timestamps.filter(
+      (time) => now - time < RATE_LIMIT_WINDOW_MS,
+    );
 
     if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
       this.requests.set(identifier, recent);
@@ -104,10 +155,98 @@ function trimOutput(output: string) {
   return `${output.slice(0, MAX_OUTPUT_CHARS)}\n... [truncated]`;
 }
 
-async function runReviewctl(cliArgs: string[], timeoutMs: number): Promise<CommandResult> {
+/**
+ * Validates that a repo path exists.
+ */
+function validateRepoExists(repoPath: string): {
+  valid: boolean;
+  error?: string;
+} {
+  if (!existsSync(repoPath)) {
+    return { valid: false, error: 'Repository path does not exist' };
+  }
+  try {
+    if (!statSync(repoPath).isDirectory()) {
+      return { valid: false, error: 'Repository path is not a directory' };
+    }
+  } catch {
+    return { valid: false, error: 'Repository path cannot be accessed' };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validates that a repo path is allowed based on ALLOWED_REPOS env var.
+ * If ALLOWED_REPOS is empty, all paths are allowed (dev mode).
+ */
+function validateRepoPath(repoPath: string): {
+  valid: boolean;
+  error?: string;
+} {
+  // Resolve to absolute path (normalizes . and ..)
+  const resolved = path.resolve(repoPath);
+
+  // Check for suspicious patterns in ORIGINAL path (before resolve)
+  // Note: path.resolve() normalizes away .. so we check the input
+  if (repoPath.includes('..')) {
+    return {
+      valid: false,
+      error: 'Invalid path: relative traversal not allowed',
+    };
+  }
+
+  // Get allowed repos from env (use path.delimiter for cross-platform support)
+  const allowedRepos =
+    process.env.ALLOWED_REPOS?.split(path.delimiter).filter(Boolean) || [];
+
+  // If no whitelist configured, allow all (dev mode)
+  if (allowedRepos.length === 0) {
+    return { valid: true };
+  }
+
+  // Resolve symlinks for comparison
+  let resolvedToCheck = resolved;
+  try {
+    if (existsSync(resolved)) {
+      resolvedToCheck = realpathSync(resolved);
+    }
+  } catch {
+    // If realpath fails, use original resolved path
+  }
+
+  // Check if path is within any allowed repo
+  const isAllowed = allowedRepos.some((allowed) => {
+    const resolvedAllowed = path.resolve(allowed);
+    let allowedReal = resolvedAllowed;
+    try {
+      if (existsSync(resolvedAllowed)) {
+        allowedReal = realpathSync(resolvedAllowed);
+      }
+    } catch {
+      // Keep original if realpath fails
+    }
+    // Ensure true path boundary: exact match or prefix with separator
+    return (
+      resolvedToCheck === allowedReal ||
+      resolvedToCheck.startsWith(allowedReal + path.sep)
+    );
+  });
+
+  if (!isAllowed) {
+    return { valid: false, error: 'Repository path not in whitelist' };
+  }
+
+  return { valid: true };
+}
+
+async function runReviewctl(
+  cliArgs: string[],
+  timeoutMs: number,
+  cwd: string = process.cwd(),
+): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn('bun', cliArgs, {
-      cwd: process.cwd(),
+      cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -120,12 +259,19 @@ async function runReviewctl(cliArgs: string[], timeoutMs: number): Promise<Comma
       child.kill('SIGKILL');
     }, timeoutMs);
 
+    // PHASE 1: Truncate during accumulation to limit memory
     child.stdout.on('data', (chunk) => {
-      stdout += String(chunk);
+      if (stdout.length < MAX_BUFFER_SIZE) {
+        const remaining = MAX_BUFFER_SIZE - stdout.length;
+        stdout += String(chunk).slice(0, remaining);
+      }
     });
 
     child.stderr.on('data', (chunk) => {
-      stderr += String(chunk);
+      if (stderr.length < MAX_BUFFER_SIZE) {
+        const remaining = MAX_BUFFER_SIZE - stderr.length;
+        stderr += String(chunk).slice(0, remaining);
+      }
     });
 
     child.on('error', (error) => {
@@ -135,7 +281,10 @@ async function runReviewctl(cliArgs: string[], timeoutMs: number): Promise<Comma
 
     child.on('close', (code) => {
       clearTimeout(timeoutId);
-      const output = (stdout || stderr).trim() || `Command failed with exit code ${code}`;
+      // Combine stdout and stderr for complete output
+      const parts = [stdout, stderr].filter(Boolean);
+      const output =
+        parts.join('\n').trim() || `Command failed with exit code ${code}`;
       resolve({ ok: code === 0, output, timedOut });
     });
   });
@@ -154,23 +303,101 @@ export class ReviewCommandService {
     }
 
     if (this.running) {
-      throw new ReviewCommandError(409, 'COMMAND_IN_PROGRESS', 'Another command is already running');
+      throw new ReviewCommandError(
+        409,
+        'COMMAND_IN_PROGRESS',
+        'Another command is already running',
+      );
     }
 
     this.running = true;
 
     try {
-      const cliPath = path.join(process.cwd(), 'mini-services', 'reviewctl', 'src', 'index.ts');
+      // Resolve repo path (default to server cwd)
+      const targetRepo = context.repoPath
+        ? path.resolve(context.repoPath)
+        : process.cwd();
+
+      // Validate repo path if provided (check original input for traversal)
+      if (context.repoPath) {
+        const validation = validateRepoPath(context.repoPath);
+        if (!validation.valid) {
+          throw new ReviewCommandError(
+            403,
+            'REPO_NOT_ALLOWED',
+            validation.error || 'Repository path not allowed',
+            {
+              requestedPath: context.repoPath,
+              resolvedPath: targetRepo,
+            },
+          );
+        }
+
+        // PHASE 1: Check if path exists
+        const existsValidation = validateRepoExists(targetRepo);
+        if (!existsValidation.valid) {
+          throw new ReviewCommandError(
+            404,
+            'REPO_NOT_FOUND',
+            existsValidation.error || 'Repository path does not exist',
+            {
+              requestedPath: context.repoPath,
+              resolvedPath: targetRepo,
+            },
+          );
+        }
+      }
+
+      const cliPath = path.join(
+        process.cwd(),
+        'mini-services',
+        'reviewctl',
+        'src',
+        'index.ts',
+      );
       const cliArgs = [cliPath, payload.command, ...toCliArgs(payload.args)];
-      const result = await this.runner(cliArgs, COMMAND_TIMEOUT_MS);
+      const result = await this.runner(cliArgs, COMMAND_TIMEOUT_MS, targetRepo);
       const output = trimOutput(result.output || '');
 
       if (!result.ok && result.timedOut) {
-        throw new ReviewCommandError(503, 'COMMAND_TIMEOUT', 'Command execution timed out', { output });
+        throw new ReviewCommandError(
+          503,
+          'COMMAND_TIMEOUT',
+          'Command execution timed out',
+          { output },
+        );
       }
 
       if (!result.ok) {
-        throw new ReviewCommandError(500, 'COMMAND_FAILED', 'Command failed', { output });
+        // Try to detect PR-specific codes from output
+        const codeMatch = output.match(/Error code:\s*([A-Z_]+)/);
+        if (codeMatch && payload.command === 'pr') {
+          const errorCode = codeMatch[1];
+
+          // Check success codes first (idempotent operations)
+          if (PR_SUCCESS_CODES[errorCode as keyof typeof PR_SUCCESS_CODES]) {
+            return {
+              output:
+                PR_SUCCESS_CODES[errorCode as keyof typeof PR_SUCCESS_CODES]
+                  .message,
+              code: errorCode,
+            };
+          }
+
+          // Then check error codes
+          const mapped = PR_ERROR_CODE_MAP[errorCode];
+          if (mapped) {
+            throw new ReviewCommandError(
+              mapped.status,
+              errorCode,
+              mapped.message,
+              { output },
+            );
+          }
+        }
+        throw new ReviewCommandError(500, 'COMMAND_FAILED', 'Command failed', {
+          output,
+        });
       }
 
       return { output: output || 'Command completed successfully' };
@@ -179,7 +406,8 @@ export class ReviewCommandService {
         throw error;
       }
 
-      const message = error instanceof Error ? error.message : 'Command execution failed';
+      const message =
+        error instanceof Error ? error.message : 'Command execution failed';
       throw new ReviewCommandError(500, 'COMMAND_EXECUTION_ERROR', message);
     } finally {
       this.running = false;
