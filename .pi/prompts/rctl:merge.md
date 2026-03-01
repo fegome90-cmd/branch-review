@@ -53,7 +53,7 @@ reviewctl merge --squash  # o --merge o --rebase
 git log --oneline -3
 
 # Push a base branch
-git push origin <base-branch>
+git push origin "$BASE_BRANCH"
 ```
 
 ## FASE 4: Si hay PR
