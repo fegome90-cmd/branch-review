@@ -321,8 +321,8 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
     const driftStatus = parseDriftStatus(content);
     run.drift_status = driftStatus;
     run.diff_digest = computeDigest(content);
-    run.base_sha = getShaForRef(baseBranch);
-    run.target_sha = getCurrentSha();
+    run.base_sha = baseSha;
+    run.target_sha = headSha;
 
     const runDir = path.join(REVIEW_RUNS_DIR, run.run_id);
     fs.writeFileSync(
