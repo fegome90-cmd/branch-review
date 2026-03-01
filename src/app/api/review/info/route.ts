@@ -55,6 +55,7 @@ export async function GET() {
           'run',
           'ingest',
           'verdict',
+          'pr',
           'merge',
           'cleanup',
         ],
@@ -98,6 +99,13 @@ export async function GET() {
       { code: 'COMMAND_IN_PROGRESS', httpStatus: 409 },
       { code: 'COMMAND_TIMEOUT', httpStatus: 503 },
       { code: 'COMMAND_FAILED', httpStatus: 500 },
+      // PR-specific error codes
+      { code: 'GH_NOT_AUTHENTICATED', httpStatus: 503 },
+      { code: 'GH_CLI_ERROR', httpStatus: 500 },
+      { code: 'PR_EXISTS', httpStatus: 200 },
+      { code: 'NO_COMMITS', httpStatus: 400 },
+      { code: 'WORKING_TREE_DIRTY', httpStatus: 400 },
+      { code: 'INVALID_BRANCH_NAME', httpStatus: 400 },
       // Multi-repo error codes
       { code: 'REPO_NOT_ALLOWED', httpStatus: 403 },
       { code: 'REPO_NOT_FOUND', httpStatus: 404 },
@@ -126,7 +134,8 @@ export async function GET() {
       'POST /api/review/command {"command": "run"}',
       'POST /api/review/command {"command": "ingest", "args": {"agent": "<name>"}}',
       'POST /api/review/command {"command": "verdict"}',
-      'GET /api/review/final?runId=<run-id>',
+      'POST /api/review/command {"command": "pr", "args": {"title": "<title>", "body": "<body>"}}',
+      'POST /api/review/command {"command": "merge"}',
     ],
     documentation: '/docs/agent-task-card.md',
   };

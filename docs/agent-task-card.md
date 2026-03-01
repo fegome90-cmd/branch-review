@@ -186,16 +186,17 @@ Ejecuta un comando de reviewctl.
 
 **Comandos permitidos:**
 
-| Comando   | Descripción                 | Args                      |
-| --------- | --------------------------- | ------------------------- |
-| `init`    | Crear nuevo run             | -                         |
-| `explore` | Explorar contexto/diff      | `mode: "context"\|"diff"` |
-| `plan`    | Generar plan de revisión    | -                         |
-| `run`     | Crear handoffs para agentes | -                         |
-| `ingest`  | Capturar output de agente   | `agent: string`           |
-| `verdict` | Generar veredicto final     | -                         |
-| `merge`   | Merge del branch            | -                         |
-| `cleanup` | Limpiar artefactos          | -                         |
+| Comando   | Descripción                 | Args                                                                |
+| --------- | --------------------------- | ------------------------------------------------------------------- |
+| `init`    | Crear nuevo run             | -                                                                   |
+| `explore` | Explorar contexto/diff      | `mode: "context"\|"diff"`                                           |
+| `plan`    | Generar plan de revisión    | -                                                                   |
+| `run`     | Crear handoffs para agentes | -                                                                   |
+| `ingest`  | Capturar output de agente   | `agent: string`                                                     |
+| `verdict` | Generar veredicto final     | -                                                                   |
+| `pr`      | Crear pull request          | `title: string`, `body: string`, `base?: string`, `draft?: boolean` |
+| `merge`   | Merge del branch            | -                                                                   |
+| `cleanup` | Limpiar artefactos          | -                                                                   |
 
 **Request:**
 
@@ -296,6 +297,17 @@ curl -X DELETE http://localhost:3001/api/review/token
 | `MISCONFIGURED`       | 503  | REVIEW_API_TOKEN no configurado |
 | `INTERNAL_ERROR`      | 500  | Error interno del servidor      |
 
+### Errores específicos del comando `pr`
+
+| Código                 | HTTP | Causa                            | Acción sugerida                      |
+| ---------------------- | ---- | -------------------------------- | ------------------------------------ |
+| `GH_NOT_AUTHENTICATED` | 503  | `gh` CLI sin autenticar          | Ejecutar `gh auth login` en servidor |
+| `GH_CLI_ERROR`         | 500  | Error al ejecutar `gh pr create` | Revisar salida del CLI y reintentar  |
+| `PR_EXISTS`            | 200  | PR ya existe para el branch      | Usar URL retornada                   |
+| `NO_COMMITS`           | 400  | Branch sin commits nuevos        | Hacer commits antes                  |
+| `WORKING_TREE_DIRTY`   | 400  | Cambios sin commit               | Commit o stash cambios               |
+| `INVALID_BRANCH_NAME`  | 400  | Nombre de branch inválido        | Usar solo alfanuméricos, \_, /, ., - |
+
 ---
 
 ## Workflow Típico
@@ -308,7 +320,8 @@ curl -X DELETE http://localhost:3001/api/review/token
 5. POST /api/review/command {"command": "run"}
 6. POST /api/review/command {"command": "ingest", "args": {"agent": "code-reviewer"}}
 7. POST /api/review/command {"command": "verdict"}
-8. GET /api/review/final?runId=<run-id>
+8. POST /api/review/command {"command": "pr", "args": {"title": "My PR", "body": "Description"}}
+9. POST /api/review/command {"command": "merge"}
 ```
 
 ---
