@@ -1,12 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
-import ora from 'ora';
-import { AGENT_NAMES, type AgentName } from '../lib/constants.js';
+import ora, { type Ora } from 'ora';
+import {
+  AGENT_NAMES,
+  type AgentName,
+  type RunMetadata,
+} from '../lib/constants.js';
 import {
   computeHash,
   isValidName,
   sanitizeName,
+  type ValidationResult,
   validateReport,
 } from '../lib/contract-validator.js';
 import {
@@ -168,11 +173,11 @@ function loadPlanJson(runDir: string): PlanJson | null {
 async function ingestAgentReport(
   agentName: string,
   content: string,
-  run: any,
+  run: RunMetadata,
   runDir: string,
   reportsDir: string,
   tasksDir: string,
-  spinner: any,
+  spinner: Ora,
   sourcePath: string | null,
   isExtra: boolean,
   allowOverwrite: boolean,
@@ -335,7 +340,7 @@ async function ingestStaticReport(
   content: string,
   runDir: string,
   staticsDir: string,
-  spinner: any,
+  spinner: Ora,
   sourcePath: string | null,
   isExtra: boolean,
   allowOverwrite: boolean,
@@ -625,8 +630,29 @@ function parsePytestSummary(content: string): PytestSummary {
   };
 }
 
-function parseReport(content: string, agent: AgentName, runId: string): any {
-  const result: any = {
+interface ParsedReport {
+  run_id: string;
+  agent: AgentName;
+  timestamp: string;
+  findings: Array<{
+    id: string;
+    priority: string;
+    title: string;
+    location: { file: string };
+    description: string;
+    evidence: { snippet: string };
+  }>;
+  statistics: { p0_count: number; p1_count: number; p2_count: number };
+  verdict: { result: string; justification: string };
+  validation?: ValidationResult;
+}
+
+function parseReport(
+  content: string,
+  agent: AgentName,
+  runId: string,
+): ParsedReport {
+  const result: ParsedReport = {
     run_id: runId,
     agent,
     timestamp: new Date().toISOString(),
@@ -694,13 +720,13 @@ function parseReport(content: string, agent: AgentName, runId: string): any {
 
   // Count statistics
   result.statistics.p0_count = result.findings.filter(
-    (f: any) => f.priority === 'P0',
+    (f) => f.priority === 'P0',
   ).length;
   result.statistics.p1_count = result.findings.filter(
-    (f: any) => f.priority === 'P1',
+    (f) => f.priority === 'P1',
   ).length;
   result.statistics.p2_count = result.findings.filter(
-    (f: any) => f.priority === 'P2',
+    (f) => f.priority === 'P2',
   ).length;
 
   // Check for PASS/FAIL in verdict section
