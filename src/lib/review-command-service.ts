@@ -214,7 +214,11 @@ function validateRepoPath(repoPath: string): {
     } catch {
       // Keep original if realpath fails
     }
-    return resolvedToCheck.startsWith(allowedReal);
+    // Ensure true path boundary: exact match or prefix with separator
+    return (
+      resolvedToCheck === allowedReal ||
+      resolvedToCheck.startsWith(allowedReal + path.sep)
+    );
   });
 
   if (!isAllowed) {
@@ -244,7 +248,7 @@ async function runReviewctl(
       child.kill('SIGKILL');
     }, timeoutMs);
 
-    // FASE 1: Truncate during accumulation to limit memory
+    // PHASE 1: Truncate during accumulation to limit memory
     child.stdout.on('data', (chunk) => {
       if (stdout.length < MAX_BUFFER_SIZE) {
         const remaining = MAX_BUFFER_SIZE - stdout.length;
@@ -316,7 +320,7 @@ export class ReviewCommandService {
           );
         }
 
-        // FASE 1: Check if path exists
+        // PHASE 1: Check if path exists
         const existsValidation = validateRepoExists(targetRepo);
         if (!existsValidation.valid) {
           throw new ReviewCommandError(

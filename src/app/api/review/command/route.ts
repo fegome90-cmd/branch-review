@@ -44,7 +44,7 @@ function getRepoPath(
   ) {
     const bodyRepoPath = (rawBody as Record<string, unknown>).repoPath;
     if (typeof bodyRepoPath === 'string' && bodyRepoPath.trim()) {
-      return bodyRepoPath.trim() || headerPath || undefined;
+      return bodyRepoPath.trim();
     }
   }
 
