@@ -29,7 +29,7 @@ Revisar la sesión y responder:
 
 Si hay un patrón reusable, invocar `codex-learn-capture`:
 
-```
+```text
 Contexto: [descripción de la tarea]
 Patrón identificado: [nombre descriptivo]
 Evidencia: [archivos/comandos específicos]

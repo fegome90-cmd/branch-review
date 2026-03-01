@@ -58,9 +58,9 @@ git push origin <base-branch>
 
 ## FASE 4: Si hay PR
 
-Si el merge es a main/master y hay PR abierto:
-- Invocar skill `github-pr-curated` para crear PR
-- O usar `gh pr merge` si ya existe
+Si hay un PR abierto para esta branch:
+- Usar `gh pr merge` para cerrar el PR y hacer merge en el remoto
+- O confiar en el merge local + push de la FASE 2/3
 
 ```bash
 gh pr merge <pr-number> --squash

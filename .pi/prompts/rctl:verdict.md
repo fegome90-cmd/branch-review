@@ -43,9 +43,9 @@ reviewctl verdict
 
 | Verdict | Significado | Acción |
 |---------|-------------|--------|
-| PASS | Todo OK | Proceder a merge |
-| PASS_WITH_NOTES | OK con observaciones | Review notes, decidir |
-| FAIL | Problemas críticos | Fix antes de merge |
+| PASS | Todo OK | Proceder a `pr` y luego `merge` |
+| PASS_WITH_NOTES | OK con observaciones | Review notes, proceder a `pr` |
+| FAIL | Problemas críticos | Fix antes de `pr` / `merge` |
 | BLOCKED | Dependencias faltantes | Resolver blockers |
 
 ## FASE 4: Revisar Verdict
@@ -92,4 +92,4 @@ Presentar al usuario:
 - Veredicto final (PASS/FAIL/BLOCKED)
 - Resumen de findings
 - Quality gates status
-- Siguiente paso sugerido (merge o fix)
+- Siguiente paso sugerido (`pr`, `merge` o `fix`)
