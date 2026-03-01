@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 
@@ -165,6 +165,13 @@ function validateRepoExists(repoPath: string): {
   if (!existsSync(repoPath)) {
     return { valid: false, error: 'Repository path does not exist' };
   }
+  try {
+    if (!statSync(repoPath).isDirectory()) {
+      return { valid: false, error: 'Repository path is not a directory' };
+    }
+  } catch {
+    return { valid: false, error: 'Repository path cannot be accessed' };
+  }
   return { valid: true };
 }
 
@@ -188,9 +195,9 @@ function validateRepoPath(repoPath: string): {
     };
   }
 
-  // Get allowed repos from env
+  // Get allowed repos from env (use path.delimiter for cross-platform support)
   const allowedRepos =
-    process.env.ALLOWED_REPOS?.split(':').filter(Boolean) || [];
+    process.env.ALLOWED_REPOS?.split(path.delimiter).filter(Boolean) || [];
 
   // If no whitelist configured, allow all (dev mode)
   if (allowedRepos.length === 0) {
@@ -274,8 +281,10 @@ async function runReviewctl(
 
     child.on('close', (code) => {
       clearTimeout(timeoutId);
+      // Combine stdout and stderr for complete output
+      const parts = [stdout, stderr].filter(Boolean);
       const output =
-        (stdout || stderr).trim() || `Command failed with exit code ${code}`;
+        parts.join('\n').trim() || `Command failed with exit code ${code}`;
       resolve({ ok: code === 0, output, timedOut });
     });
   });

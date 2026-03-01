@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -94,7 +95,7 @@ describe('Multi-repo validation', () => {
   let symlinkDir: string;
 
   beforeEach(() => {
-    tempDir = join(tmpdir(), `repo-test-${Date.now()}`);
+    tempDir = mkdtempSync(join(tmpdir(), 'repo-test-'));
     realDir = join(tempDir, 'real-repo');
     symlinkDir = join(tempDir, 'symlink-repo');
 
@@ -124,7 +125,33 @@ describe('Multi-repo validation', () => {
     try {
       await service.execute(validPayload, {
         clientId: 'client',
-        repoPath: '/nonexistent/path/12345',
+        repoPath: join(tmpdir(), 'nonexistent-path-12345'),
+      });
+    } catch (error) {
+      capturedError = error;
+    }
+
+    expect(capturedError).toBeInstanceOf(ReviewCommandError);
+    expect((capturedError as ReviewCommandError).status).toBe(404);
+    expect((capturedError as ReviewCommandError).code).toBe('REPO_NOT_FOUND');
+  });
+
+  it('rejects file path (not directory) with REPO_NOT_FOUND', async () => {
+    // Create a file instead of directory
+    const filePath = join(tempDir, 'not-a-directory.txt');
+    writeFileSync(filePath, 'test content');
+
+    const service = new ReviewCommandService(async () => ({
+      ok: true,
+      output: 'ok',
+      timedOut: false,
+    }));
+
+    let capturedError: unknown;
+    try {
+      await service.execute(validPayload, {
+        clientId: 'client',
+        repoPath: filePath,
       });
     } catch (error) {
       capturedError = error;
@@ -136,6 +163,13 @@ describe('Multi-repo validation', () => {
   });
 
   it('rejects path traversal attempts with REPO_NOT_ALLOWED', async () => {
+    // Create a real directory outside ALLOWED_REPOS to test whitelist
+    const outsideDir = mkdtempSync(join(tmpdir(), 'outside-'));
+    mkdirSync(outsideDir, { recursive: true });
+
+    const originalEnv = process.env.ALLOWED_REPOS;
+    process.env.ALLOWED_REPOS = tempDir; // Only allow tempDir, not outsideDir
+
     const service = new ReviewCommandService(async () => ({
       ok: true,
       output: 'ok',
@@ -146,10 +180,13 @@ describe('Multi-repo validation', () => {
     try {
       await service.execute(validPayload, {
         clientId: 'client',
-        repoPath: '/tmp/../etc/passwd',
+        repoPath: outsideDir,
       });
     } catch (error) {
       capturedError = error;
+    } finally {
+      process.env.ALLOWED_REPOS = originalEnv;
+      rmSync(outsideDir, { recursive: true, force: true });
     }
 
     expect(capturedError).toBeInstanceOf(ReviewCommandError);
@@ -210,9 +247,11 @@ describe('Multi-repo validation', () => {
       // Should fail - path not under whitelist
       let capturedError: unknown;
       try {
+        // Use a path outside the whitelist (platform-independent)
+        const outsidePath = join(tmpdir(), 'outside-whitelist-' + Date.now());
         await service.execute(validPayload, {
           clientId: 'client',
-          repoPath: '/etc',
+          repoPath: outsidePath,
         });
       } catch (error) {
         capturedError = error;
