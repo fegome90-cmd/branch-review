@@ -7,6 +7,7 @@ import { ingestCommand } from './commands/ingest.js';
 import { initCommand } from './commands/init.js';
 import { mergeCommand } from './commands/merge.js';
 import { planCommand } from './commands/plan.js';
+import { prCommand } from './commands/pr.js';
 import { runCommand } from './commands/run.js';
 import { statusCommand } from './commands/status.js';
 import { verdictCommand } from './commands/verdict.js';
@@ -91,6 +92,16 @@ program
   .option('--json', 'Output as JSON only')
   .option('--allow-incomplete', 'Generate verdict even with missing reports')
   .action(verdictCommand);
+
+// PR command
+program
+  .command('pr')
+  .description('Create pull request for current branch')
+  .requiredOption('--title <title>', 'PR title')
+  .requiredOption('--body <body>', 'PR body')
+  .option('--base <branch>', 'Base branch (default: main)')
+  .option('--draft', 'Create as draft')
+  .action(prCommand);
 
 // Merge command
 program

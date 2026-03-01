@@ -55,6 +55,7 @@ export async function GET() {
           'run',
           'ingest',
           'verdict',
+          'pr',
           'merge',
           'cleanup',
         ],
@@ -109,7 +110,8 @@ export async function GET() {
       'POST /api/review/command {"command": "run"}',
       'POST /api/review/command {"command": "ingest", "args": {"agent": "<name>"}}',
       'POST /api/review/command {"command": "verdict"}',
-      'GET /api/review/final?runId=<run-id>',
+      'POST /api/review/command {"command": "pr", "args": {"title": "<title>", "body": "<body>"}}',
+      'POST /api/review/command {"command": "merge"}',
     ],
     documentation: '/docs/agent-task-card.md',
   };
