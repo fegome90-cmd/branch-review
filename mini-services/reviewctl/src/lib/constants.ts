@@ -48,8 +48,7 @@ export type DriftStatus =
   | 'ALIGNED'
   | 'DRIFT_RISK'
   | 'DRIFT_CONFIRMED'
-  | 'DRIFT_OVERRIDE'
-  | 'UNKNOWN';
+  | 'DRIFT_OVERRIDE';
 
 /**
  * Plan resolution status.

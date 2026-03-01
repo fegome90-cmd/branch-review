@@ -147,10 +147,10 @@ All Biome errors and warnings are currently blocking. Future versions may introd
 
 ## Validation Commands
 
-Ingest reports into the current run:
+Check report validity before ingest:
 
 ```bash
-# Ingest from stdin (writes to run directory)
+# Validate report structure (dry-run)
 cat report.md | reviewctl ingest --agent code-reviewer
 
 # Ingest with overwrite
