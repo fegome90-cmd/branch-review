@@ -165,7 +165,6 @@ describe('Multi-repo validation', () => {
   it('rejects path traversal attempts with REPO_NOT_ALLOWED', async () => {
     // Create a real directory outside ALLOWED_REPOS to test whitelist
     const outsideDir = mkdtempSync(join(tmpdir(), 'outside-'));
-    mkdirSync(outsideDir, { recursive: true });
 
     const originalEnv = process.env.ALLOWED_REPOS;
     process.env.ALLOWED_REPOS = tempDir; // Only allow tempDir, not outsideDir
