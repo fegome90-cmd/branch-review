@@ -25,6 +25,32 @@ function getRequestId(request: NextRequest) {
   return request.headers.get('x-request-id') || randomUUID();
 }
 
+/**
+ * Extracts repo path from request with type-safe checks.
+ * Priority: body.repoPath > X-Repo-Path header
+ */
+function getRepoPath(
+  request: NextRequest,
+  rawBody: unknown,
+): string | undefined {
+  const headerPath = request.headers.get('x-repo-path');
+
+  // Safe extraction with type guard
+  if (
+    rawBody !== null &&
+    rawBody !== undefined &&
+    typeof rawBody === 'object' &&
+    'repoPath' in rawBody
+  ) {
+    const bodyRepoPath = (rawBody as Record<string, unknown>).repoPath;
+    if (typeof bodyRepoPath === 'string' && bodyRepoPath.trim()) {
+      return bodyRepoPath.trim();
+    }
+  }
+
+  return headerPath || undefined;
+}
+
 function parseBody(rawBody: string) {
   if (!rawBody) {
     return null;
@@ -77,15 +103,20 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // Extract repoPath from raw body (before zod stripped it)
+  const repoPath = getRepoPath(request, body);
+
   try {
     const result = await reviewCommandService.execute(parsed.data, {
       clientId: getClientId(request),
+      repoPath,
     });
 
     logger.info('Review command completed', {
       requestId,
       route,
       command: parsed.data.command,
+      repoPath: repoPath || 'default',
       durationMs: Date.now() - start,
       status: 200,
     });

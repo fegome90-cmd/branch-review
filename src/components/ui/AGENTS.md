@@ -4,7 +4,7 @@
 
 ## Overview
 
-shadcn/ui component library (48 files). Based on Radix UI primitives with Tailwind CSS 4 styling.
+shadcn/ui component library. Based on Radix UI primitives with Tailwind CSS 4 styling.
 
 ## Structure
 
@@ -15,7 +15,7 @@ src/components/ui/
 ├── dropdown-menu.tsx
 ├── input.tsx
 ├── select.tsx
-└── ... (44 more components)
+└── ... (additional components)
 ```
 
 ## Conventions

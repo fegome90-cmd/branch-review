@@ -101,7 +101,9 @@ program
   .requiredOption('--body <body>', 'PR body')
   .option('--base <branch>', 'Base branch (default: main)')
   .option('--draft', 'Create as draft')
-  .action(prCommand);
+  .action(async (options) => {
+    await prCommand(options);
+  });
 
 // Merge command
 program

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
+import type { RunMetadata } from '../lib/constants.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
 import {
   getCurrentRun,
@@ -14,6 +15,21 @@ interface StatusOptions {
   json?: boolean;
   runId?: string;
   last?: boolean;
+}
+
+interface StatusResult {
+  run_id: string;
+  branch: string;
+  base_branch: string;
+  target_branch: string;
+  explore: { context: boolean; diff: boolean };
+  plan: { present: boolean; path: string | null };
+  agents: { completed: number; total: number };
+  statics: { requiredPassed: number; requiredTotal: number };
+  drift: { status: string; override_used: boolean };
+  warnings: { total: number };
+  verdict: { exists: boolean; value: string | null };
+  artifacts: { reports_dir: string; tasks_dir: string; statics_dir: string };
 }
 
 /**
@@ -114,7 +130,7 @@ export async function statusCommand(options: StatusOptions) {
   }
 }
 
-function resolveRun(options: StatusOptions): any | null {
+function resolveRun(options: StatusOptions): RunMetadata | null {
   if (options.runId) {
     return getRunById(options.runId);
   }
@@ -126,7 +142,7 @@ function resolveRun(options: StatusOptions): any | null {
   return getCurrentRun();
 }
 
-function buildStatus(runDir: string, run: any) {
+function buildStatus(runDir: string, run: RunMetadata): StatusResult {
   const exploreDir = path.join(runDir, 'explore');
   const reportsDir = path.join(runDir, 'reports');
   const tasksDir = path.join(runDir, 'tasks');

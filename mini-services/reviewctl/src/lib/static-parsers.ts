@@ -136,6 +136,8 @@ export function parseBiomeSummary(content: string): StaticSummary {
       status: 'PASS',
       reason: 'Biome output is empty (no findings reported)',
       issues: 0,
+      blockingIssues: 0,
+      warningIssues: 0,
     };
   }
 
@@ -144,6 +146,8 @@ export function parseBiomeSummary(content: string): StaticSummary {
       status: 'SKIP',
       reason: 'No files were processed by Biome',
       issues: 0,
+      blockingIssues: 0,
+      warningIssues: 0,
     };
   }
 
@@ -156,6 +160,8 @@ export function parseBiomeSummary(content: string): StaticSummary {
       status: 'FAIL',
       reason: `Biome reported ${issues > 0 ? issues : 1} issue(s)`,
       issues: issues > 0 ? issues : 1,
+      blockingIssues: errors > 0 ? errors : 1,
+      warningIssues: warnings,
     };
   }
 
@@ -163,10 +169,23 @@ export function parseBiomeSummary(content: string): StaticSummary {
     /found\s+0\s+errors?/i.test(content) ||
     /checked\s+\d+\s+files/i.test(content)
   ) {
+    // Preserve warning counts in PASS path
+    if (warnings > 0) {
+      return {
+        status: 'PASS',
+        reason: `Biome warnings only: ${warnings} (non-blocking policy)`,
+        issues: warnings,
+        blockingIssues: 0,
+        warningIssues: warnings,
+      };
+    }
+
     return {
       status: 'PASS',
       reason: 'Biome output parsed successfully',
       issues: 0,
+      blockingIssues: 0,
+      warningIssues: 0,
     };
   }
 
@@ -174,5 +193,7 @@ export function parseBiomeSummary(content: string): StaticSummary {
     status: 'UNKNOWN',
     reason: 'Could not determine Biome result conclusively',
     issues,
+    blockingIssues: errors,
+    warningIssues: warnings,
   };
 }

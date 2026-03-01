@@ -106,9 +106,26 @@ export async function GET() {
       { code: 'NO_COMMITS', httpStatus: 400 },
       { code: 'WORKING_TREE_DIRTY', httpStatus: 400 },
       { code: 'INVALID_BRANCH_NAME', httpStatus: 400 },
+      // Multi-repo error codes
+      { code: 'REPO_NOT_ALLOWED', httpStatus: 403 },
+      { code: 'REPO_NOT_FOUND', httpStatus: 404 },
       { code: 'MISCONFIGURED', httpStatus: 503 },
       { code: 'INTERNAL_ERROR', httpStatus: 500 },
     ],
+    multiRepo: {
+      enabled: true,
+      defaultRepo: 'server cwd (branch-review)',
+      header: 'X-Repo-Path',
+      bodyField: 'repoPath',
+      priority: 'body > header > default',
+      security: 'ALLOWED_REPOS env var whitelist (colon-separated paths)',
+      symlinkResolution: true,
+      existenceCheck: true,
+      example: {
+        header: 'X-Repo-Path: /path/to/your/repo',
+        body: '{"command": "init", "repoPath": "/path/to/your/repo"}',
+      },
+    },
     workflow: [
       'POST /api/review/command {"command": "init"}',
       'POST /api/review/command {"command": "explore", "args": {"mode": "context"}}',

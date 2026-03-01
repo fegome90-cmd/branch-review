@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
-import ora from 'ora';
+import ora, { type Ora } from 'ora';
 import { EXPLORE_DIR, REVIEW_RUNS_DIR } from '../lib/constants.js';
-import { resolvePlan } from '../lib/plan-resolver.js';
+import { type PlanCandidate, resolvePlan } from '../lib/plan-resolver.js';
 import {
   detectSensitiveZones,
   detectStack,
@@ -93,7 +93,7 @@ export async function exploreCommand(
   }
 }
 
-async function runContextExplorer(spinner: any, force?: boolean) {
+async function runContextExplorer(spinner: Ora, force?: boolean) {
   const outputPath = path.join(EXPLORE_DIR, 'context.md');
 
   if (fs.existsSync(outputPath) && !force) {
@@ -283,7 +283,7 @@ function getStaticTools(
   return tools;
 }
 
-async function runDiffExplorer(spinner: any, force?: boolean) {
+async function runDiffExplorer(spinner: Ora, force?: boolean) {
   const outputPath = path.join(EXPLORE_DIR, 'diff.md');
 
   if (fs.existsSync(outputPath) && !force) {
@@ -321,8 +321,8 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
     const driftStatus = parseDriftStatus(content);
     run.drift_status = driftStatus;
     run.diff_digest = computeDigest(content);
-    run.base_sha = getShaForRef(baseBranch);
-    run.target_sha = getCurrentSha();
+    run.base_sha = baseSha;
+    run.target_sha = headSha;
 
     const runDir = path.join(REVIEW_RUNS_DIR, run.run_id);
     fs.writeFileSync(
@@ -336,7 +336,11 @@ async function runDiffExplorer(spinner: any, force?: boolean) {
 function generateDiffMd(
   diffStats: { files: number; added: number; removed: number },
   changedFiles: string[],
-  planResult: { status: string; path: string | null; candidates?: any[] },
+  planResult: {
+    status: string;
+    path: string | null;
+    candidates?: PlanCandidate[];
+  },
   branch: string,
   baseBranch: string,
   baseSha: string,
