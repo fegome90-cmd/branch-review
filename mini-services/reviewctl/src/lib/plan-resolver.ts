@@ -9,7 +9,7 @@ import {
 } from './constants.js';
 import { getBaseBranch, getCurrentBranch, getCurrentSha } from './utils.js';
 
-interface PlanCandidate {
+export interface PlanCandidate {
   path: string;
   score: number;
   reason: string;
