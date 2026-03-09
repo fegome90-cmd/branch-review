@@ -16,6 +16,8 @@ branch-review coordinates code review agents and static analysis tools into a un
 - 9 CLI commands for complete review workflow
 - Multi-agent support (code-reviewer, code-simplifier, sql-safety-hunter)
 - Static analysis integration (biome, ruff, pyrefly)
+- Diff-based review scope for branches and isolated worktrees
+- Scoped static-gate requests with explicit applicability states (`PENDING`, `PENDING_NO_CONFIG`, `SKIP`, `NOT_APPLICABLE`)
 - Plan-based reviews with drift detection
 - Priority findings: P0 (blocking), P1 (important), P2 (minor)
 - Real-time dashboard with verdict visualization
@@ -81,6 +83,12 @@ reviewctl run                         # fail if drift detected
 reviewctl run --allow-drift           # override drift (debug only)
 reviewctl run --max-agents 2
 ```
+
+Notes:
+
+- `reviewctl` evaluates branch diff / worktree diff scope, not ad-hoc file lists.
+- `ruff` should be executed diff-scoped via `BR_DIFF_RANGE=<base>...HEAD bash scripts/run-ruff-check.sh`.
+- `pytest` should not default to repo-wide execution for isolated worktrees when no scoped Python test target exists.
 
 **`ingest`** - Capture agent/static output
 

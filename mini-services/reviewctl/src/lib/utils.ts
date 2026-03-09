@@ -344,8 +344,19 @@ export function getLastRun(): RunMetadata | null {
  */
 export function saveCurrentRun(run: RunMetadata): void {
   ensureDir(REVIEW_RUNS_DIR);
-  const runFile = path.join(REVIEW_RUNS_DIR, 'current.json');
-  fs.writeFileSync(runFile, JSON.stringify(run, null, 2));
+
+  const currentRunPath = path.join(REVIEW_RUNS_DIR, 'current.json');
+  fs.writeFileSync(currentRunPath, JSON.stringify(run, null, 2));
+
+  if (!run.run_id) {
+    return;
+  }
+
+  const runDir = path.join(REVIEW_RUNS_DIR, run.run_id);
+  ensureDir(runDir);
+
+  const runMetadataPath = path.join(runDir, 'run.json');
+  fs.writeFileSync(runMetadataPath, JSON.stringify(run, null, 2));
 }
 
 // Get run directory
@@ -467,12 +478,6 @@ export function validatePreconditions(
   }
 
   const run = getCurrentRun();
-
-  if (required.includes('plan_resolved') && run) {
-    if (run.plan_status === 'MISSING' || run.plan_status === 'AMBIGUOUS') {
-      errors.push(PRECONDITION_ERRORS.MISSING_PLAN);
-    }
-  }
 
   if (required.includes('no_drift') && run) {
     if (run.drift_status === 'DRIFT_CONFIRMED') {

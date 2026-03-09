@@ -44,6 +44,19 @@ For review orchestration tasks, use the canonical path A (no shortcuts):
 
 Why: `run` generates handoff requests (`REQUEST_*.md`) and task status artifacts, enabling reproducible multi-agent reviews and consistent auditability.
 
+Scope rules:
+
+- `reviewctl` operates on branch diff / worktree diff range, not on ad-hoc file lists.
+- In isolated worktrees, resolve base/target branch metadata before `run`.
+- Fail early if the run has no resolvable diff scope.
+
+Static gate rules:
+
+- `biome` applies only when the diff touches JS/TS scope.
+- `ruff` should run diff-scoped via `BR_DIFF_RANGE=<base>...HEAD bash scripts/run-ruff-check.sh`.
+- `pytest` should not default to repo-wide execution for isolated worktrees when there is no scoped Python test target.
+- Status semantics must distinguish `PENDING`, `PENDING_NO_CONFIG`, `SKIP`, and `NOT_APPLICABLE`.
+
 ## PR comments workflow (gh wrapper)
 
 Use this wrapper to ingest CodeRabbit/Copilot/GitHub comments into local artifacts and a TODO file.
