@@ -124,7 +124,7 @@ function _reviewctl_exec
         -H "X-Review-Token: $REVIEW_API_TOKEN" \
         -H "Content-Type: application/json" \
         -d '{"command":"'$cmd'","args":'$args_json'}' \
-        "$BRANCH_REVIEW_API/api/review/command" 2>/dev/null; or echo -e "\n000")
+        "$BRANCH_REVIEW_API/api/review/command" 2>/dev/null; or printf '\n000')
 
     set -l http_code (echo "$response" | tail -n 1)
     set -l body (echo "$response" | head -n -1)

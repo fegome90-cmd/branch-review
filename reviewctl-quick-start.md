@@ -1,21 +1,21 @@
 # Reviewctl Quick Start (Portable)
 
-Sistema de orquestación de revisiones portable para `reviewctl`.
+Portable review orchestration for `reviewctl`.
 
-## Instalación
+## Installation
 
-Desde cualquier repositorio, ejecuta el instalador apuntando al repo fuente de `branch-review`:
+From any repository, run the installer pointing at the source `branch-review` repository:
 
 ```bash
-bash /ruta/hacia/branch-review/scripts/install-reviewctl.sh
+bash /path/to/branch-review/scripts/install-reviewctl.sh
 ```
 
-Esto crea:
+This creates:
 
 - `./scripts/reviewctl-wrappers/reviewctl-wrapper.sh` (Bash/Zsh)
 - `./scripts/reviewctl-wrappers/reviewctl-wrapper.fish` (Fish)
 
-## Activación
+## Activation
 
 Bash/Zsh:
 
@@ -29,29 +29,29 @@ Fish:
 source scripts/reviewctl-wrappers/reviewctl-wrapper.fish
 ```
 
-## Configuración
+## Configuration
 
-El token no se persiste en archivos. Debe existir en la sesión actual:
-
-```bash
-export REVIEW_API_TOKEN="tu-token-seguro"
-```
-
-Opcionalmente puedes fijar el core CLI path de forma explícita:
+The token is never persisted to files. It must exist in the current shell session:
 
 ```bash
-export REVIEWCTL_CORE_CLI_PATH="/ruta/hacia/branch-review/mini-services/reviewctl/src/index.ts"
+export REVIEW_API_TOKEN="your-secure-token"
 ```
 
-## Comportamiento operativo
+Optionally, you can pin the core CLI path explicitly:
 
-- El wrapper usa estrategia API-first.
-- Solo hace fallback local cuando la API es inalcanzable a nivel transporte.
-- Si la API responde `4xx` o `5xx`, falla de forma explícita y no hace fallback silencioso.
-- Si falta `REVIEW_API_TOKEN`, el wrapper usa modo local directo.
-- El scope del review sigue siendo diff-based; `reviewctl` revisa branch diff, no listas ad-hoc de archivos.
+```bash
+export REVIEWCTL_CORE_CLI_PATH="/path/to/branch-review/mini-services/reviewctl/src/index.ts"
+```
 
-## Comandos principales
+## Runtime behavior
+
+- The wrapper uses an API-first strategy.
+- It falls back to local execution only when the API is unreachable at the transport level.
+- If the API responds with `4xx` or `5xx`, the wrapper fails explicitly and does not perform a silent fallback.
+- If `REVIEW_API_TOKEN` is missing, the wrapper uses direct local mode.
+- Review scope remains diff-based; `reviewctl` reviews the branch diff, not ad-hoc file lists.
+
+## Main commands
 
 - `reviewctl_init`
 - `reviewctl_plan`
@@ -60,19 +60,19 @@ export REVIEWCTL_CORE_CLI_PATH="/ruta/hacia/branch-review/mini-services/reviewct
 - `reviewctl_status`
 - `reviewctl_full_workflow`
 
-## Observabilidad mínima
+## Minimal observability
 
-Los wrappers registran contexto de ejecución con campos como:
+The wrappers log execution context with fields such as:
 
 - `mode=api|local-fallback|local-direct`
 - `command=<cmd>`
-- `http_status=<code>` cuando aplica
-- `core_cli_path=<path resuelto>`
+- `http_status=<code>` when applicable
+- `core_cli_path=<resolved path>`
 
-## Gates de portabilidad
+## Portability gates
 
-- Sin rutas absolutas hardcodeadas en el wrapper generado.
-- Sin tokens en archivos.
-- Fish shell sin `eval`.
-- Argumentos serializados con semántica estable hacia la API.
-- Fallback local limitado a errores de transporte.
+- No hardcoded absolute paths in the generated wrapper.
+- No tokens persisted to files.
+- Fish shell wrapper avoids `eval`.
+- Arguments are serialized with stable semantics toward the API.
+- Local fallback is limited to transport failures.

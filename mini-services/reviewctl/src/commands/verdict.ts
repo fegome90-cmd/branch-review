@@ -203,7 +203,10 @@ export async function verdictCommand(options: {
       }
       console.log(chalk.bold('═'.repeat(50)));
       const requiredStaticsPassed = staticGate.required.filter(
-        (item) => item.status === 'PASS',
+        (item) =>
+          item.status === 'PASS' ||
+          item.status === 'SKIP' ||
+          item.status === 'NOT_APPLICABLE',
       ).length;
 
       console.log(chalk.gray(`\n  P0 (Blocking): ${aggregated.p0Total}`));
@@ -273,6 +276,7 @@ type RequiredStaticStatus =
   | 'FAIL'
   | 'UNKNOWN'
   | 'SKIP'
+  | 'NOT_APPLICABLE'
   | 'MISSING'
   | 'PENDING';
 
@@ -431,7 +435,10 @@ function evaluateRequiredStatics(
   return {
     required,
     blocking: required.filter(
-      (item) => item.status !== 'PASS' && item.status !== 'SKIP',
+      (item) =>
+        item.status !== 'PASS' &&
+        item.status !== 'SKIP' &&
+        item.status !== 'NOT_APPLICABLE',
     ),
   };
 }
@@ -449,6 +456,7 @@ function normalizeRequiredStaticStatus(
   )
     return 'FAIL';
   if (normalized === 'SKIP' || normalized === 'SKIPPED') return 'SKIP';
+  if (normalized === 'NOT_APPLICABLE') return 'NOT_APPLICABLE';
   if (normalized === 'MISSING') return 'MISSING';
   if (normalized.startsWith('PENDING')) return 'PENDING';
   return 'UNKNOWN';
@@ -718,7 +726,12 @@ ${
 `;
 
     for (const gate of staticGate.required) {
-      const blocking = gate.status === 'PASS' ? 'No' : 'Yes';
+      const blocking =
+        gate.status === 'PASS' ||
+        gate.status === 'SKIP' ||
+        gate.status === 'NOT_APPLICABLE'
+          ? 'No'
+          : 'Yes';
       md += `| ${gate.tool} | ${gate.status} | ${blocking} |\n`;
     }
   }
@@ -863,8 +876,12 @@ function generateFinalJson(
     static_gate: {
       required: staticGate.required,
       blocking: staticGate.blocking,
-      passed: staticGate.required.filter((item) => item.status === 'PASS')
-        .length,
+      passed: staticGate.required.filter(
+        (item) =>
+          item.status === 'PASS' ||
+          item.status === 'SKIP' ||
+          item.status === 'NOT_APPLICABLE',
+      ).length,
       total: staticGate.required.length,
     },
     drift: {

@@ -435,9 +435,8 @@ export function getDiffStats(): {
 }
 
 // Get changed files list
-export function getChangedFiles(): string[] {
+export function getChangedFiles(baseBranch = getBaseBranch()): string[] {
   try {
-    const baseBranch = getBaseBranch();
     const files = execSync(
       `git diff --name-only ${baseBranch}...HEAD 2>/dev/null || git diff --name-only HEAD~1`,
       { encoding: 'utf-8' },
@@ -478,6 +477,19 @@ export function validatePreconditions(
   }
 
   const run = getCurrentRun();
+
+  if (required.includes('plan_resolved')) {
+    if (!run) {
+      errors.push(PRECONDITION_ERRORS.NO_RUN_FOUND);
+    } else {
+      const runDir = getRunDir(run.run_id);
+      const hasPlanMd = fs.existsSync(path.join(runDir, 'plan.md'));
+      const hasPlanJson = fs.existsSync(path.join(runDir, 'plan.json'));
+      if (!hasPlanMd || !hasPlanJson || !run.plan_digest) {
+        errors.push(PRECONDITION_ERRORS.MISSING_PLAN);
+      }
+    }
+  }
 
   if (required.includes('no_drift') && run) {
     if (run.drift_status === 'DRIFT_CONFIRMED') {

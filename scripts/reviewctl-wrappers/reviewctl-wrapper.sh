@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Portable reviewctl wrapper - API first with deterministic local fallback
-set -u
 : "${BRANCH_REVIEW_API:=http://localhost:3001}"
 
 _reviewctl_wrapper_dir() {
-    local source_path="${BASH_SOURCE[0]:-$0}"
+    local source_path=""
+
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        source_path="$(eval 'printf %s "${(%):-%x}"' 2>/dev/null)"
+    elif [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+        source_path="${BASH_SOURCE[0]}"
+    else
+        source_path="$0"
+    fi
+
     cd "$(dirname "$source_path")" >/dev/null 2>&1 && pwd
 }
 
@@ -28,7 +36,7 @@ log_error() { echo "[reviewctl:error] $1" >&2; }
 json_escape() {
     local value="$1"
     value=${value//\\/\\\\}
-    value=${value//"/\\"}
+    value=${value//\"/\\\"}
     value=${value//$'\n'/\\n}
     value=${value//$'\r'/\\r}
     value=${value//$'\t'/\\t}
@@ -105,7 +113,6 @@ execute_cmd() {
     cli_path="$(resolve_core_cli_path)"
     export __REVIEWCTL_WRAPPER_LOOP=1
 
-    local cleanup_loop=1
     local exit_code=0
 
     if [[ -z "${REVIEW_API_TOKEN:-}" ]]; then
@@ -132,7 +139,7 @@ execute_cmd() {
         -H "X-Review-Token: $REVIEW_API_TOKEN" \
         -H "Content-Type: application/json" \
         -d "{\"command\":\"$(json_escape "$cmd")\",\"args\":$args_json}" \
-        "$BRANCH_REVIEW_API/api/review/command" 2>/dev/null || echo -e "\n000")
+        "$BRANCH_REVIEW_API/api/review/command" 2>/dev/null || printf '\n000')
 
     local http_code
     http_code=$(echo "$response" | tail -n 1)

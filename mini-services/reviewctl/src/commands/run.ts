@@ -559,7 +559,7 @@ async function generateStaticsRequests(
     throw new Error('No active review run. Run: reviewctl init');
   }
 
-  const changedFiles = getChangedFiles();
+  const changedFiles = getChangedFiles(run.base_branch);
 
   // Load plan.json to get required/optional statics
   const planJson = loadPlanJson(runDir);
