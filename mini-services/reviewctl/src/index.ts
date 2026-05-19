@@ -2,6 +2,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { cleanupCommand } from './commands/cleanup.js';
+import { doctorCommand } from './commands/doctor.js';
 import { exploreCommand } from './commands/explore.js';
 import { ingestCommand } from './commands/ingest.js';
 import { initCommand } from './commands/init.js';
@@ -120,6 +121,12 @@ program
   .option('--all', 'Clean all review runs, not just current')
   .option('--older-than <days>', 'Clean runs older than N days')
   .action(cleanupCommand);
+
+program
+  .command('doctor')
+  .description('Run readiness checks for local or external-safe usage')
+  .option('--json', 'Output doctor report as JSON')
+  .action(doctorCommand);
 
 // Error handling
 program.exitOverride((err) => {

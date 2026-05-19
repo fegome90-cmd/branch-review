@@ -108,6 +108,7 @@ export async function GET() {
       { code: 'INVALID_BRANCH_NAME', httpStatus: 400 },
       // Multi-repo error codes
       { code: 'REPO_NOT_ALLOWED', httpStatus: 403 },
+      { code: 'REPO_POLICY_MISSING', httpStatus: 503 },
       { code: 'REPO_NOT_FOUND', httpStatus: 404 },
       { code: 'MISCONFIGURED', httpStatus: 503 },
       { code: 'INTERNAL_ERROR', httpStatus: 500 },
@@ -118,7 +119,8 @@ export async function GET() {
       header: 'X-Repo-Path',
       bodyField: 'repoPath',
       priority: 'body > header > default',
-      security: 'ALLOWED_REPOS env var whitelist (colon-separated paths)',
+      security:
+        'ALLOWED_REPOS env var whitelist (colon-separated paths); external multi-repo API calls fail closed when missing',
       symlinkResolution: true,
       existenceCheck: true,
       example: {
