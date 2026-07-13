@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -111,6 +112,80 @@ function createTarget(paths: MaterializerTestPaths): RepositoryTarget {
     baseSha: fullSha.base,
     headSha: fullSha.head,
     mergeBaseSha: fullSha.mergeBase,
+  };
+}
+
+function runGit(
+  repositoryRoot: string,
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv = {},
+): string {
+  const gitExecutable = process.env.GIT_EXECUTABLE ?? '/usr/bin/git';
+  return execFileSync(gitExecutable, [...argv], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+    env: {
+      PATH: '/usr/bin:/bin',
+      LANG: 'C',
+      LC_ALL: 'C',
+      GIT_AUTHOR_NAME: 'Reviewctl Test',
+      GIT_AUTHOR_EMAIL: 'reviewctl-test@example.invalid',
+      GIT_COMMITTER_NAME: 'Reviewctl Test',
+      GIT_COMMITTER_EMAIL: 'reviewctl-test@example.invalid',
+      GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z',
+      GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z',
+      ...env,
+    },
+  }).trim();
+}
+
+function createRealGitTarget(paths: MaterializerTestPaths): RepositoryTarget {
+  const gitExecutable = process.env.GIT_EXECUTABLE ?? '/usr/bin/git';
+  runGit(paths.repositoryRoot, ['init', '--initial-branch=main']);
+  runGit(paths.repositoryRoot, ['config', 'user.name', 'Reviewctl Test']);
+  runGit(paths.repositoryRoot, [
+    'config',
+    'user.email',
+    'reviewctl-test@example.invalid',
+  ]);
+
+  fs.writeFileSync(path.join(paths.repositoryRoot, 'tracked-source.txt'), '');
+  fs.writeFileSync(
+    path.join(paths.repositoryRoot, 'src', 'tracked-nested.txt'),
+    '',
+  );
+  fs.writeFileSync(path.join(paths.repositoryRoot, 'src', 'app.ts'), '');
+  runGit(paths.repositoryRoot, [
+    'add',
+    'tracked-source.txt',
+    'source-link',
+    'src',
+  ]);
+  runGit(paths.repositoryRoot, ['commit', '-m', 'base fixture']);
+  const baseSha = runGit(paths.repositoryRoot, ['rev-parse', 'HEAD']);
+
+  fs.writeFileSync(
+    path.join(paths.repositoryRoot, 'src', 'app.ts'),
+    'export const value = 2;\n',
+  );
+  runGit(paths.repositoryRoot, ['add', 'src/app.ts']);
+  runGit(paths.repositoryRoot, ['commit', '-m', 'head fixture'], {
+    GIT_AUTHOR_DATE: '2000-01-01T00:00:01Z',
+    GIT_COMMITTER_DATE: '2000-01-01T00:00:01Z',
+  });
+  const headSha = runGit(paths.repositoryRoot, ['rev-parse', 'HEAD']);
+  const mergeBaseSha = runGit(paths.repositoryRoot, [
+    'merge-base',
+    baseSha,
+    headSha,
+  ]);
+
+  expect(gitExecutable).toMatch(/git(?:\.exe)?$/u);
+  return {
+    repositoryRoot: paths.repositoryRoot,
+    baseSha,
+    headSha,
+    mergeBaseSha,
   };
 }
 
@@ -316,7 +391,7 @@ function createFakeGitRunner(options: {
 
       if (argv[0] === 'diff') {
         return {
-          stdout: Buffer.from(`${changedPaths.join(' ')} `),
+          stdout: Buffer.from(`${changedPaths.join('\0')}\0`),
           stderr: Buffer.alloc(0),
         };
       }
@@ -330,7 +405,7 @@ function createFakeGitRunner(options: {
         }
         return {
           stdout: Buffer.from(
-            `${entry.mode} blob ${entry.objectId}	${requestedPath} `,
+            `${entry.mode} blob ${entry.objectId}	${requestedPath}\0`,
           ),
           stderr: Buffer.alloc(0),
         };
@@ -422,7 +497,7 @@ describe('Graphify Git materializer target resolution', () => {
     ]);
   });
 
-  test('rejects every non-immutable or malformed commit pin before invoking Git', async () => {
+  test('rejects every non-immutable or malformed base or head commit pin before invoking Git', async () => {
     const paths = createPaths();
     const unsafeRefs = [
       '',
@@ -447,25 +522,32 @@ describe('Graphify Git materializer target resolution', () => {
     ];
 
     for (const unsafeRef of unsafeRefs) {
-      const git = createFakeGitRunner({ repositoryRoot: paths.repositoryRoot });
-      const error = await resolveRepositoryTarget(
-        paths.repositoryRoot,
-        unsafeRef,
-        fullSha.head,
-        { git, policy: createPolicy(paths) },
-      ).catch((caughtError: unknown) => caughtError);
+      for (const candidate of [
+        { baseSha: unsafeRef, headSha: fullSha.head },
+        { baseSha: fullSha.base, headSha: unsafeRef },
+      ]) {
+        const git = createFakeGitRunner({
+          repositoryRoot: paths.repositoryRoot,
+        });
+        const error = await resolveRepositoryTarget(
+          paths.repositoryRoot,
+          candidate.baseSha,
+          candidate.headSha,
+          { git, policy: createPolicy(paths) },
+        ).catch((caughtError: unknown) => caughtError);
 
-      expect(error).toMatchObject({
-        code: 'INVALID_GIT_REF',
-        diagnostics: expect.any(String),
-      });
-      expect(git.invocations).toHaveLength(0);
-      expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
-      expect(JSON.stringify(error)).not.toContain(paths.stagingRoot);
+        expect(error).toMatchObject({
+          code: 'INVALID_GIT_REF',
+          diagnostics: expect.any(String),
+        });
+        expect(git.invocations).toHaveLength(0);
+        expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+        expect(JSON.stringify(error)).not.toContain(paths.stagingRoot);
+      }
     }
   });
 
-  test('rejects malformed resolved commit output from Git instead of trusting it', async () => {
+  test('rejects malformed resolved base or head commit output from Git instead of trusting it', async () => {
     const paths = createPaths();
     const malformedResolvedOutputs = [
       fullSha.base.slice(0, 39),
@@ -477,12 +559,57 @@ describe('Graphify Git materializer target resolution', () => {
     ];
 
     for (const malformedOutput of malformedResolvedOutputs) {
-      const git = createFakeGitRunner({
-        repositoryRoot: paths.repositoryRoot,
-        commitResolutions: new Map<string, string>([
+      for (const commitResolutions of [
+        new Map<string, string>([
           [fullSha.base, malformedOutput],
           [fullSha.head, fullSha.head],
           ['merge-base', fullSha.mergeBase],
+        ]),
+        new Map<string, string>([
+          [fullSha.base, fullSha.base],
+          [fullSha.head, malformedOutput],
+          ['merge-base', fullSha.mergeBase],
+        ]),
+      ]) {
+        const git = createFakeGitRunner({
+          repositoryRoot: paths.repositoryRoot,
+          commitResolutions,
+        });
+
+        const error = await resolveRepositoryTarget(
+          paths.repositoryRoot,
+          fullSha.base,
+          fullSha.head,
+          { git, policy: createPolicy(paths) },
+        ).catch((caughtError: unknown) => caughtError);
+
+        expect(error).toMatchObject({
+          code: 'INVALID_GIT_REF',
+          diagnostics: expect.any(String),
+        });
+        expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+      }
+    }
+  });
+
+  test('rejects malformed merge-base output from Git instead of trusting it', async () => {
+    const paths = createPaths();
+    const malformedMergeBaseOutputs = [
+      fullSha.mergeBase.slice(0, 39),
+      `${fullSha.mergeBase}0`,
+      'g'.repeat(40),
+      'refs/heads/main',
+      `${fullSha.mergeBase}\n${fullSha.head}`,
+      '',
+    ];
+
+    for (const malformedOutput of malformedMergeBaseOutputs) {
+      const git = createFakeGitRunner({
+        repositoryRoot: paths.repositoryRoot,
+        commitResolutions: new Map<string, string>([
+          [fullSha.base, fullSha.base],
+          [fullSha.head, fullSha.head],
+          ['merge-base', malformedOutput],
         ]),
       });
 
@@ -788,13 +915,27 @@ describe('Graphify Git materializer file boundary', () => {
 
   test('supports the planned public materializer invocation without requiring test-only seams', async () => {
     const paths = createPaths();
-    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
+    const target = createRealGitTarget(paths);
 
-    await materializeGitFileSet(createTarget(paths), createPolicy(paths), {
-      approvedPaths: ['src/app.ts'],
-      maxFiles: 10,
+    const result = await materializeGitFileSet(
+      target,
+      createPolicy(paths, {
+        trustedExecutable: process.env.GIT_EXECUTABLE ?? '/usr/bin/git',
+      }),
+      {
+        approvedPaths: ['src/app.ts'],
+        maxFiles: 10,
+      },
+    );
+
+    expect(result).toEqual({
+      stagingRoot: path.resolve(paths.stagingRoot),
+      includedFiles: ['src/app.ts'],
+      skippedFiles: [],
     });
-
-    expectSourceManifestUnchanged(paths, sourceManifestBefore);
+    expect(
+      fs.readFileSync(path.join(paths.stagingRoot, 'src', 'app.ts'), 'utf8'),
+    ).toBe('export const value = 2;\n');
+    expect(runGit(paths.repositoryRoot, ['status', '--short'])).toBe('');
   });
 });
