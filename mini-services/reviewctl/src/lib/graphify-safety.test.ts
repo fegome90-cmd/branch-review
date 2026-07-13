@@ -326,6 +326,15 @@ describe('Graphify trusted execution contract', () => {
 
   test('hard-denies provider credential selectors even when explicitly allowlisted', () => {
     const providerCredentialSelectors = [
+      'NETRC',
+      'GIT_ASKPASS',
+      'GIT_CONFIG_GLOBAL',
+      'NPM_CONFIG_USERCONFIG',
+      'SSH_AGENT_PID',
+      'SSH_AUTH_SOCK',
+      'SSL_CERT_FILE',
+      'CURL_HOME',
+      'DOCKER_HOST',
       'GOOGLE_APPLICATION_CREDENTIALS',
       'GOOGLE_CLOUD_PROJECT',
       'GOOGLE_CLOUD_QUOTA_PROJECT',
@@ -344,7 +353,8 @@ describe('Graphify trusted execution contract', () => {
       'AZURE_AUTHORITY_HOST',
       'KUBECONFIG',
       'DOCKER_CONFIG',
-      'SSH_AUTH_SOCK',
+      'VAULT_ADDR',
+      'VAULT_TOKEN',
     ];
     const sourceEnvironment = Object.fromEntries([
       ['PATH', '/usr/bin'],
@@ -415,7 +425,7 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
-  test('terminates the process group on timeout and returns sanitized diagnostics', async () => {
+  test('returns a distinct fail-closed containment error on timeout', async () => {
     const paths = createSafetyPaths();
     const startedChildMarker = path.join(paths.sandbox, 'started-child');
     const survivingChildMarker = path.join(paths.sandbox, 'surviving-child');
@@ -432,7 +442,7 @@ describe('Graphify trusted execution contract', () => {
       ).catch((caughtError: unknown) => caughtError);
 
       expect(error).toMatchObject({
-        code: 'TIMEOUT',
+        code: 'PROCESS_CONTAINMENT_UNVERIFIED',
         diagnostics: expect.any(String),
       });
       expect((error as { diagnostics: string }).diagnostics).not.toContain(
@@ -447,6 +457,61 @@ describe('Graphify trusted execution contract', () => {
         delete process.env.REVIEW_API_TOKEN;
       } else {
         process.env.REVIEW_API_TOKEN = previousToken;
+      }
+    }
+  });
+
+  test('does not report detached descendants as safely contained after timeout', async () => {
+    const paths = createSafetyPaths();
+    const detachedChildStartedMarker = path.join(
+      paths.sandbox,
+      'detached-child-started',
+    );
+    const detachedChildSurvivedMarker = path.join(
+      paths.sandbox,
+      'detached-child-survived',
+    );
+    const detachedChildPidFile = path.join(paths.sandbox, 'detached-child.pid');
+
+    const childScript = [
+      "const fs = require('node:fs')",
+      `fs.writeFileSync(${JSON.stringify(detachedChildPidFile)}, String(process.pid))`,
+      `fs.writeFileSync(${JSON.stringify(detachedChildStartedMarker)}, 'started')`,
+      `setTimeout(() => fs.writeFileSync(${JSON.stringify(detachedChildSurvivedMarker)}, 'survived'), 250)`,
+      'setTimeout(() => {}, 60_000)',
+    ].join(';');
+    const parentScript = [
+      "const { spawn } = require('node:child_process')",
+      "const fs = require('node:fs')",
+      `const child = spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { detached: true, stdio: 'ignore' })`,
+      'child.unref()',
+      `while (!fs.existsSync(${JSON.stringify(detachedChildStartedMarker)})) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10) }`,
+      'setTimeout(() => {}, 60_000)',
+    ].join(';');
+
+    try {
+      const error = await runTrustedProcess(
+        createPolicy(paths, { timeoutMs: 50 }),
+        nodeArgv(parentScript),
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(error).toMatchObject({
+        code: 'PROCESS_CONTAINMENT_UNVERIFIED',
+        diagnostics: expect.any(String),
+      });
+      expect(fs.existsSync(detachedChildStartedMarker)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(fs.existsSync(detachedChildSurvivedMarker)).toBe(true);
+    } finally {
+      if (fs.existsSync(detachedChildPidFile)) {
+        try {
+          process.kill(
+            Number(fs.readFileSync(detachedChildPidFile, 'utf8')),
+            'SIGKILL',
+          );
+        } catch {
+          // The process may have already exited; cleanup is best effort.
+        }
       }
     }
   });

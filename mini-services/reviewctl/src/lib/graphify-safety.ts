@@ -41,6 +41,7 @@ type SafetyErrorCode =
   | 'NETWORK_ISOLATION_UNAVAILABLE'
   | 'OUTPUT_LIMIT'
   | 'TIMEOUT'
+  | 'PROCESS_CONTAINMENT_UNVERIFIED'
   | 'PROCESS_FAILED';
 
 export class GraphifySafetyError extends Error {
@@ -67,6 +68,18 @@ const blockedEnvironmentKeyNames = new Set([
   'REVIEW_API_TOKEN',
   'GH_TOKEN',
   'GITHUB_TOKEN',
+  'NETRC',
+  'GIT_ASKPASS',
+  'GIT_CONFIG',
+  'GIT_CONFIG_GLOBAL',
+  'GIT_CONFIG_SYSTEM',
+  'GIT_CONFIG_NOSYSTEM',
+  'GIT_SSH',
+  'GIT_SSH_COMMAND',
+  'NPM_CONFIG_GLOBALCONFIG',
+  'NPM_CONFIG_REGISTRY',
+  'NPM_CONFIG_USERCONFIG',
+  'SSH_AGENT_PID',
   'GOOGLE_APPLICATION_CREDENTIALS',
   'GOOGLE_CLOUD_PROJECT',
   'GOOGLE_CLOUD_QUOTA_PROJECT',
@@ -85,7 +98,13 @@ const blockedEnvironmentKeyNames = new Set([
   'AZURE_AUTHORITY_HOST',
   'KUBECONFIG',
   'DOCKER_CONFIG',
+  'DOCKER_HOST',
   'SSH_AUTH_SOCK',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'CURL_HOME',
+  'VAULT_ADDR',
+  'VAULT_TOKEN',
 ]);
 
 const blockedEnvironmentKeyPatterns = [
@@ -95,10 +114,24 @@ const blockedEnvironmentKeyPatterns = [
   /(^|_)API_KEY$/u,
   /(^|_)ACCESS_KEY_ID$/u,
   /(^|_)SECRET_ACCESS_KEY$/u,
+  /(^|_)ASKPASS$/u,
+  /(^|_)AUTH_SOCK$/u,
+  /(^|_)SOCKET$/u,
+  /(^|_)AGENT_PID$/u,
+  /(^|_)CREDENTIALS?(_FILE)?$/u,
+  /(^|_)NETRC$/u,
+  /(^|_)CERT(_FILE|_DIR)?$/u,
   /^AWS_/u,
   /^AZURE_/u,
   /^GOOGLE_/u,
   /^CLOUDSDK_/u,
+  /^GIT_/u,
+  /^NPM_CONFIG_/u,
+  /^PNPM_/u,
+  /^YARN_/u,
+  /^DOCKER_/u,
+  /^KUBE/u,
+  /^VAULT_/u,
 ];
 
 const cleanupPollMs = 10;
@@ -579,9 +612,9 @@ export async function runTrustedProcess(
         reject(
           immutableDiagnosticsError(
             new GraphifySafetyError(
-              'TIMEOUT',
-              'trusted process timed out',
-              'trusted process timed out; process group cleanup completed or reached the bounded cleanup deadline',
+              'PROCESS_CONTAINMENT_UNVERIFIED',
+              'trusted process containment could not be verified after timeout',
+              'trusted process timed out; process-group cleanup ran, but arbitrary detached descendant containment is not verifiable by this boundary',
             ),
           ),
         );
