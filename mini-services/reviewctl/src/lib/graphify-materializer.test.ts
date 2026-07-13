@@ -37,6 +37,17 @@ type TreeEntry = {
   content?: string;
 };
 
+const isolatedGitArgvPrefix = [
+  '-c',
+  'core.fsmonitor=false',
+  '-c',
+  'core.hooksPath=/dev/null',
+  '-c',
+  'core.pager=cat',
+  '-c',
+  'diff.external=',
+] as const;
+
 type SourceManifestEntry = {
   type: 'file' | 'directory' | 'symlink';
   relativePath: string;
@@ -253,7 +264,7 @@ function expectSourceManifestUnchanged(
 
 function assertCanonicalGitInvocation(
   invocation: GitInvocation,
-  expectedArgv: readonly string[],
+  _expectedArgv: readonly string[],
   repositoryRoot: string,
   executable: string,
 ): void {
@@ -262,10 +273,22 @@ function assertCanonicalGitInvocation(
     cwd: repositoryRoot,
     shell: false,
   });
-  expect(invocation.argv).toEqual(expectedArgv);
-  expect(invocation.env).toEqual({ LANG: 'C', PATH: '/usr/bin:/bin' });
+  expect(invocation.argv.slice(0, isolatedGitArgvPrefix.length)).toEqual([
+    ...isolatedGitArgvPrefix,
+  ]);
+  expect(invocation.env).toEqual({
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_SYSTEM: '/dev/null',
+    GIT_EXTERNAL_DIFF: '/usr/bin/false',
+    GIT_OPTIONAL_LOCKS: '0',
+    GIT_PAGER: 'cat',
+    GIT_TERMINAL_PROMPT: '0',
+    LANG: 'C',
+    LC_ALL: 'C',
+    PATH: '/usr/bin:/bin',
+  });
   expect(invocation.cwd).not.toContain('.git/hooks');
-  expect(invocation.argv).not.toContain('-c');
   expect(invocation.argv).not.toContain('--config');
   expect(invocation.argv).not.toContain('checkout');
   expect(invocation.argv).not.toContain('fetch');
@@ -276,17 +299,25 @@ function assertCanonicalGitInvocation(
   expect(invocation.argv).not.toContain('pull');
   expect(invocation.argv).not.toContain('push');
 
-  const command = invocation.argv[0];
+  const argv = invocation.argv.slice(isolatedGitArgvPrefix.length);
+  const command = argv[0];
   if (command === 'diff') {
-    expect(invocation.argv.at(-1)).toBe('--');
+    expect(argv.at(-1)).toBe('--');
   }
   if (command === 'ls-tree') {
-    expect(invocation.argv.at(-2)).toBe('--');
-    expect(invocation.argv.at(-1)).not.toBe('');
+    expect(argv.at(-2)).toBe('--');
+    expect(argv.at(-1)).not.toBe('');
   }
   if (command === 'cat-file') {
-    expect(invocation.argv).toHaveLength(3);
+    expect(argv).toHaveLength(3);
   }
+}
+
+function withoutGitIsolationPrefix(argv: readonly string[]): string[] {
+  expect(argv.slice(0, isolatedGitArgvPrefix.length)).toEqual([
+    ...isolatedGitArgvPrefix,
+  ]);
+  return [...argv.slice(isolatedGitArgvPrefix.length)];
 }
 
 function createFakeGitRunner(options: {
@@ -354,10 +385,11 @@ function createFakeGitRunner(options: {
       };
       runner.invocations.push(copiedInvocation);
 
+      const commandArgv = withoutGitIsolationPrefix(invocation.argv);
       expect(
         expectedInvocations.some(
           (expected) =>
-            JSON.stringify(expected) === JSON.stringify(invocation.argv),
+            JSON.stringify(expected) === JSON.stringify(commandArgv),
         ),
       ).toBe(true);
       assertCanonicalGitInvocation(
@@ -367,7 +399,7 @@ function createFakeGitRunner(options: {
         runner.executable,
       );
 
-      const argv = [...invocation.argv];
+      const argv = commandArgv;
       if (
         argv[0] === 'rev-parse' &&
         argv[1] === '--verify' &&
@@ -456,7 +488,11 @@ describe('Graphify Git materializer target resolution', () => {
       headSha: fullSha.head,
       mergeBaseSha: fullSha.mergeBase,
     });
-    expect(git.invocations.map((invocation) => invocation.argv)).toEqual([
+    expect(
+      git.invocations.map((invocation) =>
+        withoutGitIsolationPrefix(invocation.argv),
+      ),
+    ).toEqual([
       ['rev-parse', '--verify', '--end-of-options', `${fullSha.base}^{commit}`],
       ['rev-parse', '--verify', '--end-of-options', `${fullSha.head}^{commit}`],
       ['merge-base', fullSha.base, fullSha.head],
@@ -480,7 +516,11 @@ describe('Graphify Git materializer target resolution', () => {
       headSha: fullSha.sha256Head,
       mergeBaseSha: fullSha.sha256MergeBase,
     });
-    expect(git.invocations.map((invocation) => invocation.argv)).toEqual([
+    expect(
+      git.invocations.map((invocation) =>
+        withoutGitIsolationPrefix(invocation.argv),
+      ),
+    ).toEqual([
       [
         'rev-parse',
         '--verify',
@@ -736,7 +776,9 @@ describe('Graphify Git materializer file boundary', () => {
     expect(fs.existsSync(path.join(paths.sandbox, 'escape.txt'))).toBe(false);
     expectSourceManifestUnchanged(paths, sourceManifestBefore);
 
-    const invocations = git.invocations.map((invocation) => invocation.argv);
+    const invocations = git.invocations.map((invocation) =>
+      withoutGitIsolationPrefix(invocation.argv),
+    );
     expect(invocations[0]).toEqual([
       'diff',
       '--name-only',
@@ -820,7 +862,11 @@ describe('Graphify Git materializer file boundary', () => {
     });
     expect(JSON.stringify(error)).toContain(unapprovedFixturePath);
     expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
-    expect(git.invocations.map((invocation) => invocation.argv)).toEqual([
+    expect(
+      git.invocations.map((invocation) =>
+        withoutGitIsolationPrefix(invocation.argv),
+      ),
+    ).toEqual([
       [
         'diff',
         '--name-only',
@@ -838,7 +884,59 @@ describe('Graphify Git materializer file boundary', () => {
       ),
     ).toBe(false);
     expect(
-      git.invocations.some((invocation) => invocation.argv[0] === 'cat-file'),
+      git.invocations.some(
+        (invocation) =>
+          withoutGitIsolationPrefix(invocation.argv)[0] === 'cat-file',
+      ),
+    ).toBe(false);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+    expectSourceManifestUnchanged(paths, sourceManifestBefore);
+  });
+
+  test('rejects distinct raw Git paths that collide after Unicode NFC normalization before approval or writes', async () => {
+    const paths = createPaths();
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
+    const nfdPath = 'unicode/cafe\u0301.ts';
+    const nfcPath = 'unicode/café.ts';
+    expect(nfdPath).not.toBe(nfcPath);
+    expect(nfdPath.normalize('NFC')).toBe(nfcPath.normalize('NFC'));
+
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: [nfdPath, nfcPath],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          nfdPath,
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'nfd\n' },
+        ],
+        [
+          nfcPath,
+          { mode: '100644', objectId: 'b'.repeat(40), content: 'nfc\n' },
+        ],
+      ]),
+    });
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: [nfcPath], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'UNSAFE_GIT_PATH',
+      diagnostics: 'normalized Git path collision rejected',
+    });
+    expect(JSON.stringify(error)).not.toContain(nfdPath);
+    expect(JSON.stringify(error)).not.toContain(nfcPath);
+    expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+    expect(
+      git.invocations.some((invocation) => invocation.argv.includes(nfdPath)),
+    ).toBe(false);
+    expect(
+      git.invocations.some(
+        (invocation) =>
+          withoutGitIsolationPrefix(invocation.argv)[0] === 'cat-file',
+      ),
     ).toBe(false);
     expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
     expectSourceManifestUnchanged(paths, sourceManifestBefore);
@@ -992,5 +1090,40 @@ describe('Graphify Git materializer file boundary', () => {
       fs.readFileSync(path.join(paths.stagingRoot, 'src', 'app.ts'), 'utf8'),
     ).toBe('export const value = 2;\n');
     expect(runGit(paths.repositoryRoot, ['status', '--short'])).toBe('');
+  });
+
+  test('does not execute repository-selected fsmonitor or hooksPath executables during real Git reads', async () => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    const markerPath = path.join(paths.sandbox, 'repo-selected-executable-ran');
+    const fsmonitorPath = path.join(paths.sandbox, 'repo-fsmonitor.sh');
+    const hooksPath = path.join(paths.sandbox, 'repo-hooks');
+    fs.mkdirSync(hooksPath);
+    fs.writeFileSync(
+      fsmonitorPath,
+      `#!/bin/sh\nprintf ran > "${markerPath}"\nexit 0\n`,
+      { mode: 0o700 },
+    );
+    fs.writeFileSync(
+      path.join(hooksPath, 'post-checkout'),
+      `#!/bin/sh\nprintf hook > "${markerPath}"\nexit 0\n`,
+      { mode: 0o700 },
+    );
+    runGit(paths.repositoryRoot, ['config', 'core.fsmonitor', fsmonitorPath]);
+    runGit(paths.repositoryRoot, ['config', 'core.hooksPath', hooksPath]);
+
+    const result = await materializeGitFileSet(
+      target,
+      createPolicy(paths, {
+        trustedExecutable: process.env.GIT_EXECUTABLE ?? '/usr/bin/git',
+      }),
+      {
+        approvedPaths: ['src/app.ts'],
+        maxFiles: 10,
+      },
+    );
+
+    expect(result.includedFiles).toEqual(['src/app.ts']);
+    expect(fs.existsSync(markerPath)).toBe(false);
   });
 });

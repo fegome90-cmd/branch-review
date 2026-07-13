@@ -93,12 +93,36 @@ type TreeEntry = {
   path: string;
 };
 
+type NormalizedGitPath = {
+  rawPath: string;
+  normalizedPath: string;
+};
+
 const hostGitExecutable = process.env.GIT_EXECUTABLE ?? '/usr/bin/git';
 const immutableShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const regularBlobModes = new Set(['100644', '100755']);
+const isolatedGitConfigArgv = [
+  '-c',
+  'core.fsmonitor=false',
+  '-c',
+  'core.hooksPath=/dev/null',
+  '-c',
+  'core.pager=cat',
+  '-c',
+  'diff.external=',
+] as const;
 
 function safeGitEnvironment(): NodeJS.ProcessEnv {
-  return createMinimalEnvironment(process.env, ['LANG', 'PATH']);
+  return {
+    ...createMinimalEnvironment(process.env, ['LANG', 'PATH', 'LC_ALL']),
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_SYSTEM: '/dev/null',
+    GIT_EXTERNAL_DIFF: '/usr/bin/false',
+    GIT_OPTIONAL_LOCKS: '0',
+    GIT_PAGER: 'cat',
+    GIT_TERMINAL_PROMPT: '0',
+  };
 }
 
 function assertTargetRepositoryMatchesPolicy(
@@ -182,7 +206,7 @@ async function runGit(
 ): Promise<Buffer> {
   try {
     const result = await git.run({
-      argv: [...argv],
+      argv: [...isolatedGitConfigArgv, ...argv],
       cwd: repositoryRoot,
       env: safeGitEnvironment(),
       executable: git.executable,
@@ -278,6 +302,37 @@ function parseNulPaths(output: Buffer): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function normalizeGitPath(filePath: string): string {
+  return filePath.normalize('NFC');
+}
+
+function normalizedGitPathCollision(): GraphifyMaterializerError {
+  return new GraphifyMaterializerError(
+    'UNSAFE_GIT_PATH',
+    'Git changed paths collide after Unicode normalization',
+    'normalized Git path collision rejected',
+  );
+}
+
+function normalizeDistinctGitPaths(
+  rawPaths: readonly string[],
+): NormalizedGitPath[] {
+  const normalizedToRaw = new Map<string, string>();
+  const normalizedPaths: NormalizedGitPath[] = [];
+
+  for (const rawPath of rawPaths) {
+    const normalizedPath = normalizeGitPath(rawPath);
+    const existingRawPath = normalizedToRaw.get(normalizedPath);
+    if (existingRawPath !== undefined && existingRawPath !== rawPath) {
+      throw normalizedGitPathCollision();
+    }
+    normalizedToRaw.set(normalizedPath, rawPath);
+    normalizedPaths.push({ rawPath, normalizedPath });
+  }
+
+  return normalizedPaths;
+}
+
 function pathSkipReason(filePath: string): string | undefined {
   if (path.posix.isAbsolute(filePath) || path.isAbsolute(filePath)) {
     return 'absolute_path';
@@ -303,11 +358,17 @@ function pathSkipReason(filePath: string): string | undefined {
 }
 
 function assertApprovedPaths(
-  changedPaths: readonly string[],
+  changedPaths: readonly NormalizedGitPath[],
   approvedPaths: readonly string[],
 ): void {
-  const approved = new Set(approvedPaths);
-  const unapproved = changedPaths.find((filePath) => !approved.has(filePath));
+  const approved = new Set(
+    normalizeDistinctGitPaths(approvedPaths).map(
+      (filePath) => filePath.normalizedPath,
+    ),
+  );
+  const unapproved = changedPaths.find(
+    (filePath) => !approved.has(filePath.normalizedPath),
+  );
   if (!unapproved) {
     return;
   }
@@ -315,12 +376,12 @@ function assertApprovedPaths(
   throw new GraphifyMaterializerError(
     'UNAPPROVED_CHANGED_PATH',
     'Git changed path is outside the approved materialization set',
-    `unapproved changed path: ${unapproved}`,
+    `unapproved changed path: ${unapproved.normalizedPath}`,
   );
 }
 
 function assertFileLimit(
-  changedPaths: readonly string[],
+  changedPaths: readonly NormalizedGitPath[],
   maxFiles: number,
 ): void {
   if (changedPaths.length <= maxFiles) {
@@ -517,17 +578,19 @@ export async function materializeGitFileSet(
       await assertCleanGitWorktree(git, executionRepositoryRoot);
     }
 
-    const changedPaths = parseNulPaths(
-      await runGit(git, executionRepositoryRoot, [
-        'diff',
-        '--name-only',
-        '-z',
-        '--no-ext-diff',
-        '--no-textconv',
-        target.baseSha,
-        target.headSha,
-        '--',
-      ]),
+    const changedPaths = normalizeDistinctGitPaths(
+      parseNulPaths(
+        await runGit(git, executionRepositoryRoot, [
+          'diff',
+          '--name-only',
+          '-z',
+          '--no-ext-diff',
+          '--no-textconv',
+          target.baseSha,
+          target.headSha,
+          '--',
+        ]),
+      ),
     );
 
     assertApprovedPaths(changedPaths, options.approvedPaths);
@@ -536,10 +599,10 @@ export async function materializeGitFileSet(
     const includedFiles: string[] = [];
     const skippedFiles: { path: string; reason: string }[] = [];
 
-    for (const filePath of changedPaths) {
-      const unsafeReason = pathSkipReason(filePath);
+    for (const { rawPath, normalizedPath } of changedPaths) {
+      const unsafeReason = pathSkipReason(normalizedPath);
       if (unsafeReason) {
-        skippedFiles.push({ path: filePath, reason: unsafeReason });
+        skippedFiles.push({ path: normalizedPath, reason: unsafeReason });
         continue;
       }
 
@@ -550,9 +613,9 @@ export async function materializeGitFileSet(
           '--full-tree',
           target.headSha,
           '--',
-          filePath,
+          rawPath,
         ]),
-        filePath,
+        rawPath,
       );
 
       if (
@@ -560,7 +623,10 @@ export async function materializeGitFileSet(
         treeEntry.objectType !== 'blob' ||
         !regularBlobModes.has(treeEntry.mode)
       ) {
-        skippedFiles.push({ path: filePath, reason: 'unsupported_git_mode' });
+        skippedFiles.push({
+          path: normalizedPath,
+          reason: 'unsupported_git_mode',
+        });
         continue;
       }
 
@@ -569,8 +635,8 @@ export async function materializeGitFileSet(
         'blob',
         treeEntry.objectId,
       ]);
-      writeBlobAtomically(stagingRoot, filePath, blob);
-      includedFiles.push(filePath);
+      writeBlobAtomically(stagingRoot, normalizedPath, blob);
+      includedFiles.push(normalizedPath);
     }
 
     return {
