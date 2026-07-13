@@ -155,6 +155,25 @@ describe('Graphify safety boundary', () => {
 });
 
 describe('Graphify trusted execution contract', () => {
+  test('wraps a missing trusted executable as a sanitized safety error', async () => {
+    const paths = createSafetyPaths();
+    const missingExecutable = path.join(paths.sandbox, 'missing-graphify');
+
+    const error = await runTrustedProcess(
+      createPolicy(paths, { trustedExecutable: missingExecutable }),
+      [],
+    ).catch((caughtError: unknown) => caughtError);
+    const diagnostics = (error as { diagnostics: string }).diagnostics;
+
+    expect(error).toMatchObject({
+      code: 'UNTRUSTED_EXECUTABLE',
+      diagnostics: expect.any(String),
+    });
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).not.toContain(missingExecutable);
+    expect(diagnostics).not.toContain(missingExecutable);
+  });
+
   test('requires an absolute trusted executable', async () => {
     const paths = createSafetyPaths();
 

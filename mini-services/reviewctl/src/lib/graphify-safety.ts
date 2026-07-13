@@ -104,6 +104,39 @@ function invalidRoot(label: string, reason: string): GraphifySafetyError {
   return new GraphifySafetyError('INVALID_ROOT', `${label} ${reason}`);
 }
 
+function isGraphifySafetyError(error: unknown): error is GraphifySafetyError {
+  return error instanceof GraphifySafetyError;
+}
+
+function sanitizedFilesystemError(
+  code: SafetyErrorCode,
+  label: string,
+  action: string,
+): GraphifySafetyError {
+  const message = `${label} ${action}`;
+  return new GraphifySafetyError(
+    code,
+    message,
+    `${label} validation failed while ${action}`,
+  );
+}
+
+function wrapFilesystemError<T>(
+  code: SafetyErrorCode,
+  label: string,
+  action: string,
+  operation: () => T,
+): T {
+  try {
+    return operation();
+  } catch (error) {
+    if (isGraphifySafetyError(error)) {
+      throw error;
+    }
+    throw sanitizedFilesystemError(code, label, action);
+  }
+}
+
 function assertAbsolutePath(label: string, value: string): void {
   if (!path.isAbsolute(value)) {
     throw invalidRoot(label, 'must be an absolute path');
@@ -120,8 +153,15 @@ function assertDirectoryIfExists(label: string, value: string): void {
       );
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+    if (isGraphifySafetyError(error)) {
       throw error;
+    }
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw sanitizedFilesystemError(
+        'INVALID_ROOT',
+        label,
+        'must be a resolvable directory path',
+      );
     }
   }
 }
@@ -142,7 +182,12 @@ function nearestExistingAncestor(
     current = parent;
   }
 
-  const stats = fs.statSync(current);
+  const stats = wrapFilesystemError(
+    'INVALID_ROOT',
+    label,
+    'must have a resolvable existing ancestor directory',
+    () => fs.statSync(current),
+  );
   if (!stats.isDirectory()) {
     throw invalidRoot(label, 'nearest existing ancestor must be a directory');
   }
@@ -155,7 +200,12 @@ function canonicalDirectory(label: string, value: string): string {
   assertDirectoryIfExists(label, value);
 
   const { ancestor, missing } = nearestExistingAncestor(label, value);
-  const canonicalAncestor = fs.realpathSync.native(ancestor);
+  const canonicalAncestor = wrapFilesystemError(
+    'INVALID_ROOT',
+    label,
+    'must have a canonical realpath',
+    () => fs.realpathSync.native(ancestor),
+  );
   return path.resolve(canonicalAncestor, ...missing);
 }
 
@@ -335,8 +385,18 @@ function assertTrustedExecutable(executable: string): string {
     );
   }
 
-  const canonicalExecutable = fs.realpathSync.native(executable);
-  const canonicalProcessExecutable = fs.realpathSync.native(process.execPath);
+  const canonicalExecutable = wrapFilesystemError(
+    'UNTRUSTED_EXECUTABLE',
+    'trusted executable',
+    'must resolve to a trusted host-owned executable',
+    () => fs.realpathSync.native(executable),
+  );
+  const canonicalProcessExecutable = wrapFilesystemError(
+    'UNTRUSTED_EXECUTABLE',
+    'trusted executable allowlist',
+    'must resolve to a trusted host-owned executable',
+    () => fs.realpathSync.native(process.execPath),
+  );
   if (
     path.resolve(executable) !== canonicalProcessExecutable ||
     canonicalExecutable !== canonicalProcessExecutable
