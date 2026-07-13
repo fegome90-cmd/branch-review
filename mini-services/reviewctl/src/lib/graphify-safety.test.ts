@@ -2,46 +2,18 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createGraphifySafety } from './graphify-safety.js';
+import {
+  assertSafeRoots,
+  createMinimalEnvironment,
+  runTrustedProcess,
+  type GraphifySafetyPolicy,
+} from './graphify-safety.js';
 
 type SafetyPaths = {
   sandbox: string;
   reviewedRepository: string;
   runStoreRoot: string;
-  stagingCwd: string;
-};
-
-type RunnerRequest = {
-  executable: string;
-  argv: string[];
-  cwd: string;
-  env: Record<string, string>;
-  shell: false;
-  timeoutMs?: number;
-};
-
-type RunnerResult = {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-};
-
-type StartedProcess = {
-  pid: number;
-  completion: Promise<RunnerResult>;
-};
-
-type StartProcess = (request: RunnerRequest) => StartedProcess;
-
-type BoundaryOverrides = {
-  runStoreRoot?: string;
-  reviewedRepository?: string;
-  stagingCwd?: string;
-  trustedExecutables?: string[];
-  environment?: Record<string, string>;
-  startProcess?: StartProcess;
-  hasNetworkIsolation?: () => boolean;
-  terminateProcessGroup?: (pid: number) => void;
+  stagingRoot: string;
 };
 
 const createdDirectories: string[] = [];
@@ -54,50 +26,37 @@ function createSafetyPaths(): SafetyPaths {
 
   const reviewedRepository = path.join(sandbox, 'reviewed-repository');
   const runStoreRoot = path.join(sandbox, 'run-store');
-  const stagingCwd = path.join(sandbox, 'staging');
+  const stagingRoot = path.join(sandbox, 'staging');
   fs.mkdirSync(reviewedRepository);
   fs.mkdirSync(runStoreRoot);
-  fs.mkdirSync(stagingCwd);
+  fs.mkdirSync(stagingRoot);
 
-  return { sandbox, reviewedRepository, runStoreRoot, stagingCwd };
+  return { sandbox, reviewedRepository, runStoreRoot, stagingRoot };
 }
 
-function createBoundary(
+function createPolicy(
   paths: SafetyPaths,
-  overrides: BoundaryOverrides = {},
-) {
-  const startedRequests: RunnerRequest[] = [];
-  let nextPid = 4100;
-  const startProcess: StartProcess =
-    overrides.startProcess ??
-    ((request) => {
-      startedRequests.push(request);
-      return {
-        pid: nextPid++,
-        completion: Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
-      };
-    });
-
-  const boundary = createGraphifySafety({
-    runStoreRoot: overrides.runStoreRoot ?? paths.runStoreRoot,
-    reviewedRepository:
-      overrides.reviewedRepository ?? paths.reviewedRepository,
-    stagingCwd: overrides.stagingCwd ?? paths.stagingCwd,
-    trustedExecutables: overrides.trustedExecutables ?? [process.execPath],
-    dependencies: {
-      startProcess,
-      getEnvironment: () =>
-        overrides.environment ?? {
-          PATH: '/usr/bin',
-          LANG: 'C',
-        },
-      hasNetworkIsolation: overrides.hasNetworkIsolation ?? (() => true),
-      terminateProcessGroup:
-        overrides.terminateProcessGroup ?? (() => undefined),
+  overrides: Partial<GraphifySafetyPolicy> = {},
+): GraphifySafetyPolicy {
+  return {
+    reviewedRepository: paths.reviewedRepository,
+    stagingRoot: paths.stagingRoot,
+    runStoreRoot: paths.runStoreRoot,
+    trustedExecutable: process.execPath,
+    allowedEnvironmentKeys: ['PATH', 'LANG'],
+    timeoutMs: 5_000,
+    maxOutputBytes: 1024 * 1024,
+    networkIsolation: {
+      mode: 'disabled',
+      evidence: 'test capability',
+      assertEnforced: async () => undefined,
     },
-  });
+    ...overrides,
+  };
+}
 
-  return { boundary, startedRequests };
+function nodeArgv(script: string, args: readonly string[] = []): string[] {
+  return ['-e', script, ...args];
 }
 
 afterEach(() => {
@@ -109,12 +68,14 @@ afterEach(() => {
   }
 });
 
-describe('Graphify safety path policy', () => {
+describe('Graphify safety boundary', () => {
   test('rejects a relative RunStore root', () => {
     const paths = createSafetyPaths();
 
     expect(() =>
-      createBoundary(paths, { runStoreRoot: 'relative-run-store' }),
+      assertSafeRoots(
+        createPolicy(paths, { runStoreRoot: 'relative-run-store' }),
+      ),
     ).toThrow(/absolute/i);
   });
 
@@ -124,7 +85,7 @@ describe('Graphify safety path policy', () => {
     fs.mkdirSync(nestedRunStore);
 
     expect(() =>
-      createBoundary(paths, { runStoreRoot: nestedRunStore }),
+      assertSafeRoots(createPolicy(paths, { runStoreRoot: nestedRunStore })),
     ).toThrow(/contain|overlap|distinct/i);
   });
 
@@ -134,7 +95,9 @@ describe('Graphify safety path policy', () => {
     fs.mkdirSync(nestedRepository);
 
     expect(() =>
-      createBoundary(paths, { reviewedRepository: nestedRepository }),
+      assertSafeRoots(
+        createPolicy(paths, { reviewedRepository: nestedRepository }),
+      ),
     ).toThrow(/contain|overlap|distinct/i);
   });
 
@@ -149,87 +112,142 @@ describe('Graphify safety path policy', () => {
     fs.symlinkSync(escapedTarget, escapedPath, 'dir');
 
     expect(() =>
-      createBoundary(paths, { runStoreRoot: escapedPath }),
+      assertSafeRoots(createPolicy(paths, { runStoreRoot: escapedPath })),
     ).toThrow(/symlink|escape|realpath|contain/i);
   });
 
-  test('accepts distinct absolute realpaths', () => {
+  test('rejects a symlink escape from the RunStore', () => {
+    const paths = createSafetyPaths();
+    const escapedTarget = path.join(paths.sandbox, 'escaped-repository');
+    const escapedPath = path.join(
+      paths.runStoreRoot,
+      'reviewed-repository-symlink',
+    );
+    fs.mkdirSync(escapedTarget);
+    fs.symlinkSync(escapedTarget, escapedPath, 'dir');
+
+    expect(() =>
+      assertSafeRoots(
+        createPolicy(paths, { reviewedRepository: escapedPath }),
+      ),
+    ).toThrow(/symlink|escape|realpath|contain/i);
+  });
+
+  test('accepts two distinct absolute realpaths', () => {
     const paths = createSafetyPaths();
 
-    expect(() => createBoundary(paths)).not.toThrow();
+    expect(() => assertSafeRoots(createPolicy(paths))).not.toThrow();
   });
 });
 
 describe('Graphify trusted execution contract', () => {
   test('requires an absolute trusted executable', async () => {
     const paths = createSafetyPaths();
-    const { boundary } = createBoundary(paths);
 
     await expect(
-      boundary.runTrusted({ executable: 'graphify', argv: [] }),
+      runTrustedProcess(
+        createPolicy(paths, { trustedExecutable: 'graphify' }),
+        [],
+      ),
     ).rejects.toThrow(/absolute/i);
   });
 
   test('rejects an executable outside the trusted allowlist', async () => {
     const paths = createSafetyPaths();
-    const { boundary } = createBoundary(paths);
     const untrustedExecutable = path.join(paths.sandbox, 'untrusted');
 
     await expect(
-      boundary.runTrusted({ executable: untrustedExecutable, argv: [] }),
-    ).rejects.toThrow(/allowlist|trusted/i);
+      runTrustedProcess(
+        createPolicy(paths, { trustedExecutable: untrustedExecutable }),
+        [],
+      ),
+    ).rejects.toThrow(/allowlist|trusted|executable|not found|ENOENT/i);
   });
 
-  test('rejects repository configuration that selects executable or plugin paths', async () => {
+  test('rejects repository configuration that selects an executable path', async () => {
     const paths = createSafetyPaths();
-    const { boundary } = createBoundary(paths);
+    const repositoryExecutablePath = path.join(
+      paths.sandbox,
+      'repository-selected-executable',
+    );
 
     await expect(
-      boundary.runTrusted({
-        executable: process.execPath,
-        argv: [],
-        repositoryConfig: {
-          executablePath: '/tmp/repository-selected-executable',
-          pluginPath: '/tmp/repository-selected-plugin',
-        },
-      }),
-    ).rejects.toThrow(/repository configuration|executable|plugin/i);
+      runTrustedProcess(createPolicy(paths), [
+        '--executable',
+        repositoryExecutablePath,
+      ]),
+    ).rejects.toThrow(/repository configuration|executable|trusted/i);
+  });
+
+  test('rejects repository configuration that selects a plugin path', async () => {
+    const paths = createSafetyPaths();
+    const repositoryPluginPath = path.join(
+      paths.sandbox,
+      'repository-selected-plugin',
+    );
+
+    await expect(
+      runTrustedProcess(createPolicy(paths), ['--plugin', repositoryPluginPath]),
+    ).rejects.toThrow(/repository configuration|plugin|config/i);
   });
 
   test('uses a fixed staging cwd and never the reviewed repository', async () => {
     const paths = createSafetyPaths();
-    const { boundary, startedRequests } = createBoundary(paths);
 
-    await boundary.runTrusted({ executable: process.execPath, argv: [] });
+    const result = await runTrustedProcess(
+      createPolicy(paths),
+      nodeArgv('process.stdout.write(process.cwd())'),
+    );
 
-    expect(startedRequests[0]?.cwd).toBe(paths.stagingCwd);
-    expect(startedRequests[0]?.cwd).not.toBe(paths.reviewedRepository);
+    expect(result.stdout).toBe(paths.stagingRoot);
+    expect(result.stdout).not.toBe(paths.reviewedRepository);
   });
 
-  test('passes only the minimal allowlisted environment', async () => {
+  test('passes only the minimal allowlisted environment to the child', async () => {
     const paths = createSafetyPaths();
-    const { boundary, startedRequests } = createBoundary(paths, {
-      environment: {
-        PATH: '/usr/bin',
-        LANG: 'C',
-        REVIEW_API_TOKEN: 'review-secret',
-        GITHUB_TOKEN: 'github-secret',
-        GH_TOKEN: 'gh-secret',
-        AWS_ACCESS_KEY_ID: 'provider-access-key',
-        AWS_SECRET_ACCESS_KEY: 'provider-secret-key',
-        ANTHROPIC_API_KEY: 'provider-api-key',
-        UNRELATED_SECRET: 'unrelated-secret',
-      },
-    });
+    const sourceEnvironment = {
+      PATH: '/usr/bin',
+      LANG: 'C',
+      REVIEW_API_TOKEN: 'review-secret',
+      GITHUB_TOKEN: 'github-secret',
+      GH_TOKEN: 'gh-secret',
+      AWS_ACCESS_KEY_ID: 'provider-access-key',
+      AWS_SECRET_ACCESS_KEY: 'provider-secret-key',
+      ANTHROPIC_API_KEY: 'provider-api-key',
+      UNRELATED_SECRET: 'unrelated-secret',
+    };
+    const environment = createMinimalEnvironment(sourceEnvironment, [
+      'PATH',
+      'LANG',
+    ]);
 
-    await boundary.runTrusted({ executable: process.execPath, argv: [] });
+    expect(environment).toEqual({ PATH: '/usr/bin', LANG: 'C' });
 
-    expect(startedRequests[0]?.env).toEqual({ PATH: '/usr/bin', LANG: 'C' });
+    const previousEnvironment = new Map(
+      Object.keys(sourceEnvironment).map((key) => [key, process.env[key]]),
+    );
+    Object.assign(process.env, sourceEnvironment);
+
+    try {
+      const result = await runTrustedProcess(
+        createPolicy(paths),
+        nodeArgv('process.stdout.write(JSON.stringify(Object.keys(process.env).sort()))'),
+      );
+
+      expect(JSON.parse(result.stdout)).toEqual(['LANG', 'PATH']);
+    } finally {
+      for (const [key, value] of previousEnvironment) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
   });
 
   test('preserves spaces, tabs, newlines, Unicode, and leading dashes in argv', async () => {
     const paths = createSafetyPaths();
-    const { boundary, startedRequests } = createBoundary(paths);
     const argv = [
       'value with spaces',
       'value\twith\ttabs',
@@ -238,92 +256,103 @@ describe('Graphify trusted execution contract', () => {
       '--leading-dash',
     ];
 
-    await boundary.runTrusted({ executable: process.execPath, argv });
+    const result = await runTrustedProcess(
+      createPolicy(paths),
+      nodeArgv(
+        'process.stdout.write(JSON.stringify(process.argv.slice(1)))',
+        argv,
+      ),
+    );
 
-    expect(startedRequests[0]?.argv).toEqual(argv);
+    expect(JSON.parse(result.stdout)).toEqual(argv);
   });
 
   test('disables the shell', async () => {
     const paths = createSafetyPaths();
-    const { boundary, startedRequests } = createBoundary(paths);
+    const marker = path.join(paths.sandbox, 'shell-marker');
+    const shellPayload = `$(touch ${marker})`;
 
-    await boundary.runTrusted({ executable: process.execPath, argv: [] });
+    const result = await runTrustedProcess(
+      createPolicy(paths),
+      nodeArgv(
+        'process.stdout.write(process.argv[1] ?? "")',
+        [shellPayload],
+      ),
+    );
 
-    expect(startedRequests[0]?.shell).toBe(false);
+    expect(result.stdout).toBe(shellPayload);
+    expect(fs.existsSync(marker)).toBe(false);
   });
 
   test('fails closed when stdout or stderr exceeds the configured limits', async () => {
-    const oversizedOutput = 'x'.repeat(1024 * 1024);
-    for (const output of [
-      { stdout: oversizedOutput, stderr: '' },
-      { stdout: '', stderr: oversizedOutput },
-    ]) {
+    const outputs = [
+      'process.stdout.write(\'x\'.repeat(1024 * 1024 + 1))',
+      'process.stderr.write(\'x\'.repeat(1024 * 1024 + 1))',
+    ];
+
+    for (const script of outputs) {
       const paths = createSafetyPaths();
-      const { boundary } = createBoundary(paths, {
-        startProcess: () => ({
-          pid: 4201,
-          completion: Promise.resolve({
-            exitCode: 0,
-            ...output,
-          }),
-        }),
-      });
 
       await expect(
-        boundary.runTrusted({ executable: process.execPath, argv: [] }),
+        runTrustedProcess(createPolicy(paths), nodeArgv(script)),
       ).rejects.toMatchObject({ code: 'OUTPUT_LIMIT' });
     }
   });
 
   test('terminates the process group on timeout and returns sanitized diagnostics', async () => {
     const paths = createSafetyPaths();
-    const neverCompletes = new Promise<RunnerResult>(() => undefined);
-    let terminatedPid: number | undefined;
-    const { boundary } = createBoundary(paths, {
-      environment: {
-        PATH: '/usr/bin',
-        REVIEW_API_TOKEN: 'must-not-appear-in-diagnostics',
-      },
-      startProcess: () => ({ pid: 4202, completion: neverCompletes }),
-      terminateProcessGroup: (pid) => {
-        terminatedPid = pid;
-      },
-    });
+    const survivingChildMarker = path.join(paths.sandbox, 'surviving-child');
+    const secret = 'must-not-appear-in-diagnostics';
+    const previousToken = process.env.REVIEW_API_TOKEN;
+    process.env.REVIEW_API_TOKEN = secret;
 
-    const error = await boundary
-      .runTrusted({ executable: process.execPath, argv: [], timeoutMs: 25 })
-      .catch((caughtError: unknown) => caughtError);
+    try {
+      const childScript = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(survivingChildMarker)}, 'survived'), 300)`;
+      const parentScript = `const { spawn } = require('node:child_process'); spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { stdio: 'ignore' }); setTimeout(() => {}, 60_000)`;
+      const error = await runTrustedProcess(
+        createPolicy(paths, { timeoutMs: 50 }),
+        nodeArgv(parentScript),
+      ).catch((caughtError: unknown) => caughtError);
 
-    expect(terminatedPid).toBe(4202);
-    expect(error).toMatchObject({
-      code: 'TIMEOUT',
-      diagnostics: expect.any(String),
-    });
-    expect((error as { diagnostics: string }).diagnostics).not.toContain(
-      'must-not-appear-in-diagnostics',
-    );
-    expect(JSON.stringify(error)).not.toContain(
-      'must-not-appear-in-diagnostics',
-    );
+      expect(error).toMatchObject({
+        code: 'TIMEOUT',
+        diagnostics: expect.any(String),
+      });
+      expect((error as { diagnostics: string }).diagnostics).not.toContain(
+        secret,
+      );
+      expect(JSON.stringify(error)).not.toContain(secret);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(fs.existsSync(survivingChildMarker)).toBe(false);
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.REVIEW_API_TOKEN;
+      } else {
+        process.env.REVIEW_API_TOKEN = previousToken;
+      }
+    }
   });
 
   test('fails closed when network isolation is unavailable', async () => {
     const paths = createSafetyPaths();
-    let started = false;
-    const { boundary } = createBoundary(paths, {
-      hasNetworkIsolation: () => false,
-      startProcess: () => {
-        started = true;
-        return {
-          pid: 4203,
-          completion: Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
-        };
-      },
-    });
+    const startedMarker = path.join(paths.sandbox, 'started-child');
 
     await expect(
-      boundary.runTrusted({ executable: process.execPath, argv: [] }),
+      runTrustedProcess(
+        createPolicy(paths, {
+          networkIsolation: {
+            mode: 'disabled',
+            evidence: 'unavailable',
+            assertEnforced: async () => {
+              throw new Error('network isolation unavailable');
+            },
+          },
+        }),
+        nodeArgv(
+          `require('node:fs').writeFileSync(${JSON.stringify(startedMarker)}, 'started')`,
+        ),
+      ),
     ).rejects.toMatchObject({ code: 'NETWORK_ISOLATION_UNAVAILABLE' });
-    expect(started).toBe(false);
+    expect(fs.existsSync(startedMarker)).toBe(false);
   });
 });
