@@ -167,13 +167,18 @@ describe('Graphify trusted execution contract', () => {
   test('rejects an executable outside the trusted allowlist', async () => {
     const paths = createSafetyPaths();
     const untrustedExecutable = path.join(paths.sandbox, 'untrusted');
+    fs.writeFileSync(
+      untrustedExecutable,
+      '#!/bin/sh\nprintf "untrusted executable should not run"\n',
+      { mode: 0o755 },
+    );
 
     await expect(
       runTrustedProcess(
         createPolicy(paths, { trustedExecutable: untrustedExecutable }),
         [],
       ),
-    ).rejects.toThrow(/allowlist|trusted|executable|not found|ENOENT/i);
+    ).rejects.toThrow(/allowlist|trusted/i);
   });
 
   test('rejects repository configuration that selects an executable path', async () => {
