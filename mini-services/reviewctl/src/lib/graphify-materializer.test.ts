@@ -762,8 +762,12 @@ describe('Graphify Git materializer file boundary', () => {
       'unicodé-雪.txt',
       '--leading-dash.txt',
     ]) {
+      const expectedObjectId = treeEntries.get(filePath)?.objectId;
+      if (!expectedObjectId) {
+        throw new Error(`Missing test fixture object id for ${filePath}`);
+      }
       expect(lsTreePaths).toContain(filePath);
-      expect(catFileObjectIds).toContain(treeEntries.get(filePath)?.objectId);
+      expect(catFileObjectIds).toContain(expectedObjectId);
     }
 
     for (const unsupportedPath of [
