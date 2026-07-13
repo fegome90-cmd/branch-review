@@ -1,0 +1,547 @@
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { performance } from 'node:perf_hooks';
+
+export interface GraphifySafetyPolicy {
+  reviewedRepository: string;
+  stagingRoot: string;
+  runStoreRoot: string;
+  trustedExecutable: string;
+  allowedEnvironmentKeys: readonly string[];
+  timeoutMs: number;
+  maxOutputBytes: number;
+  networkIsolation: NetworkIsolationCapability;
+}
+
+export interface NetworkIsolationCapability {
+  readonly mode: 'disabled';
+  readonly evidence: string;
+  assertEnforced(): Promise<void>;
+}
+
+export interface TrustedProcessResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  timedOut: boolean;
+  elapsedMs: number;
+}
+
+export interface SafeGraphifyRoots {
+  reviewedRepository: string;
+  stagingRoot: string;
+  runStoreRoot: string;
+}
+
+type SafetyErrorCode =
+  | 'INVALID_ROOT'
+  | 'UNTRUSTED_EXECUTABLE'
+  | 'REPOSITORY_CONTROLLED_ARGUMENT'
+  | 'NETWORK_ISOLATION_UNAVAILABLE'
+  | 'OUTPUT_LIMIT'
+  | 'TIMEOUT'
+  | 'PROCESS_FAILED';
+
+export class GraphifySafetyError extends Error {
+  readonly code: SafetyErrorCode;
+  readonly diagnostics: string;
+
+  constructor(code: SafetyErrorCode, message: string, diagnostics = message) {
+    super(message);
+    this.name = 'GraphifySafetyError';
+    this.code = code;
+    this.diagnostics = diagnostics;
+  }
+}
+
+const repositoryControlledArgumentNames = new Set([
+  '--command',
+  '--command-template',
+  '--executable',
+  '--plugin',
+  '--plugin-path',
+]);
+
+const blockedEnvironmentKeyNames = new Set([
+  'REVIEW_API_TOKEN',
+  'GH_TOKEN',
+  'GITHUB_TOKEN',
+]);
+
+const blockedEnvironmentKeyPatterns = [
+  /(^|_)TOKEN$/u,
+  /(^|_)SECRET$/u,
+  /(^|_)KEY$/u,
+  /(^|_)API_KEY$/u,
+  /(^|_)ACCESS_KEY_ID$/u,
+  /(^|_)SECRET_ACCESS_KEY$/u,
+];
+
+const cleanupPollMs = 10;
+
+function immutableDiagnosticsError(
+  error: GraphifySafetyError,
+): GraphifySafetyError {
+  const diagnostics = error.diagnostics;
+  return new Proxy(error, {
+    get(target, property, receiver) {
+      if (property === 'diagnostics') {
+        return diagnostics;
+      }
+      return Reflect.get(target, property, receiver);
+    },
+    set(target, property, value, receiver) {
+      if (property === 'diagnostics') {
+        return true;
+      }
+      return Reflect.set(target, property, value, receiver);
+    },
+  });
+}
+
+function invalidRoot(label: string, reason: string): GraphifySafetyError {
+  return new GraphifySafetyError('INVALID_ROOT', `${label} ${reason}`);
+}
+
+function assertAbsolutePath(label: string, value: string): void {
+  if (!path.isAbsolute(value)) {
+    throw invalidRoot(label, 'must be an absolute path');
+  }
+}
+
+function assertDirectoryIfExists(label: string, value: string): void {
+  try {
+    const stats = fs.statSync(value);
+    if (!stats.isDirectory()) {
+      throw invalidRoot(
+        label,
+        'must be a directory or a not-yet-created directory path',
+      );
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+  }
+}
+
+function nearestExistingAncestor(
+  label: string,
+  value: string,
+): { ancestor: string; missing: string[] } {
+  const missing: string[] = [];
+  let current = path.resolve(value);
+
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw invalidRoot(label, 'must have an existing ancestor directory');
+    }
+    missing.unshift(path.basename(current));
+    current = parent;
+  }
+
+  const stats = fs.statSync(current);
+  if (!stats.isDirectory()) {
+    throw invalidRoot(label, 'nearest existing ancestor must be a directory');
+  }
+
+  return { ancestor: current, missing };
+}
+
+function canonicalDirectory(label: string, value: string): string {
+  assertAbsolutePath(label, value);
+  assertDirectoryIfExists(label, value);
+
+  const { ancestor, missing } = nearestExistingAncestor(label, value);
+  const canonicalAncestor = fs.realpathSync.native(ancestor);
+  return path.resolve(canonicalAncestor, ...missing);
+}
+
+function normalizedDirectory(label: string, value: string): string {
+  assertAbsolutePath(label, value);
+  return path.resolve(value);
+}
+
+function isSameOrInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return (
+    relative === '' ||
+    (!relative.startsWith('..') && !path.isAbsolute(relative))
+  );
+}
+
+function assertDistinctDisjointRoots(
+  firstLabel: string,
+  first: string,
+  secondLabel: string,
+  second: string,
+): void {
+  if (first === second) {
+    throw new GraphifySafetyError(
+      'INVALID_ROOT',
+      `${firstLabel} and ${secondLabel} must be distinct roots with different realpath values`,
+      'root validation failed: equal realpath roots are not allowed',
+    );
+  }
+
+  if (isSameOrInside(first, second) || isSameOrInside(second, first)) {
+    throw new GraphifySafetyError(
+      'INVALID_ROOT',
+      `${firstLabel} and ${secondLabel} must be distinct, non-overlapping roots`,
+      'root validation failed: containment or overlap detected after realpath resolution',
+    );
+  }
+}
+
+function assertNoSymlinkEscape(
+  label: string,
+  requested: string,
+  canonical: string,
+  boundaries: readonly {
+    label: string;
+    requested: string;
+    canonical: string;
+  }[],
+): void {
+  for (const boundary of boundaries) {
+    if (label === boundary.label) {
+      continue;
+    }
+
+    const requestedInsideBoundary = isSameOrInside(
+      boundary.requested,
+      requested,
+    );
+    const canonicalInsideBoundary = isSameOrInside(
+      boundary.canonical,
+      canonical,
+    );
+
+    if (requestedInsideBoundary !== canonicalInsideBoundary) {
+      throw new GraphifySafetyError(
+        'INVALID_ROOT',
+        `${label} symlink realpath escapes ${boundary.label}`,
+        'root validation failed: symlink realpath escape detected',
+      );
+    }
+  }
+}
+
+export function assertSafeRoots(
+  policy: GraphifySafetyPolicy,
+): SafeGraphifyRoots {
+  const requestedRoots = [
+    {
+      label: 'reviewedRepository',
+      requested: normalizedDirectory(
+        'reviewedRepository',
+        policy.reviewedRepository,
+      ),
+      canonical: canonicalDirectory(
+        'reviewedRepository',
+        policy.reviewedRepository,
+      ),
+    },
+    {
+      label: 'stagingRoot',
+      requested: normalizedDirectory('stagingRoot', policy.stagingRoot),
+      canonical: canonicalDirectory('stagingRoot', policy.stagingRoot),
+    },
+    {
+      label: 'runStoreRoot',
+      requested: normalizedDirectory('runStoreRoot', policy.runStoreRoot),
+      canonical: canonicalDirectory('runStoreRoot', policy.runStoreRoot),
+    },
+  ] as const;
+
+  for (const root of requestedRoots) {
+    assertAbsolutePath(root.label, root.canonical);
+  }
+
+  for (const root of requestedRoots) {
+    assertNoSymlinkEscape(
+      root.label,
+      root.requested,
+      root.canonical,
+      requestedRoots,
+    );
+  }
+
+  for (let index = 0; index < requestedRoots.length; index += 1) {
+    for (
+      let otherIndex = index + 1;
+      otherIndex < requestedRoots.length;
+      otherIndex += 1
+    ) {
+      const first = requestedRoots[index];
+      const second = requestedRoots[otherIndex];
+      assertDistinctDisjointRoots(
+        first.label,
+        first.requested,
+        second.label,
+        second.requested,
+      );
+      assertDistinctDisjointRoots(
+        first.label,
+        first.canonical,
+        second.label,
+        second.canonical,
+      );
+    }
+  }
+
+  return {
+    reviewedRepository: requestedRoots[0].canonical,
+    stagingRoot: requestedRoots[1].canonical,
+    runStoreRoot: requestedRoots[2].canonical,
+  };
+}
+
+function isBlockedEnvironmentKey(key: string): boolean {
+  const normalizedKey = key.toUpperCase();
+  return (
+    blockedEnvironmentKeyNames.has(normalizedKey) ||
+    blockedEnvironmentKeyPatterns.some((pattern) => pattern.test(normalizedKey))
+  );
+}
+
+export function createMinimalEnvironment(
+  source: NodeJS.ProcessEnv,
+  allowedKeys: readonly string[],
+): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+
+  for (const key of allowedKeys) {
+    if (isBlockedEnvironmentKey(key)) {
+      continue;
+    }
+
+    const value = source[key];
+    if (value !== undefined) {
+      environment[key] = value;
+    }
+  }
+
+  return environment;
+}
+
+function assertTrustedExecutable(executable: string): void {
+  if (!path.isAbsolute(executable)) {
+    throw new GraphifySafetyError(
+      'UNTRUSTED_EXECUTABLE',
+      'trusted executable must be absolute',
+    );
+  }
+
+  const canonicalExecutable = fs.realpathSync.native(executable);
+  const canonicalProcessExecutable = fs.realpathSync.native(process.execPath);
+  if (canonicalExecutable !== canonicalProcessExecutable) {
+    throw new GraphifySafetyError(
+      'UNTRUSTED_EXECUTABLE',
+      'trusted executable is outside the allowlist',
+    );
+  }
+}
+
+function assertNoRepositoryControlledArguments(argv: readonly string[]): void {
+  for (const argument of argv) {
+    const [name] = argument.split('=', 1);
+    if (repositoryControlledArgumentNames.has(name)) {
+      throw new GraphifySafetyError(
+        'REPOSITORY_CONTROLLED_ARGUMENT',
+        `repository configuration cannot select ${name} input for the trusted process`,
+      );
+    }
+  }
+}
+
+function appendBounded(
+  chunks: Buffer[],
+  chunk: Buffer,
+  maxOutputBytes: number,
+  reject: (error: GraphifySafetyError) => void,
+  terminate: () => void,
+): void {
+  const nextLength =
+    chunks.reduce((total, item) => total + item.byteLength, 0) +
+    chunk.byteLength;
+  if (nextLength > maxOutputBytes) {
+    terminate();
+    reject(
+      new GraphifySafetyError(
+        'OUTPUT_LIMIT',
+        'trusted process output exceeded configured byte limit',
+      ),
+    );
+    return;
+  }
+  chunks.push(chunk);
+}
+
+function killProcessGroup(pid: number | undefined): void {
+  if (pid === undefined) {
+    return;
+  }
+
+  try {
+    if (process.platform !== 'win32') {
+      process.kill(-pid, 'SIGKILL');
+      return;
+    }
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Best-effort cleanup; callers still fail closed.
+    }
+  }
+}
+
+function isProcessGroupAlive(pid: number | undefined): boolean {
+  if (pid === undefined) {
+    return false;
+  }
+
+  try {
+    if (process.platform !== 'win32') {
+      process.kill(-pid, 0);
+    } else {
+      process.kill(pid, 0);
+    }
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForProcessGroupExit(
+  pid: number | undefined,
+  cleanupDeadlineMs: number,
+): Promise<boolean> {
+  const deadline = performance.now() + cleanupDeadlineMs;
+
+  while (performance.now() < deadline) {
+    if (!isProcessGroupAlive(pid)) {
+      return true;
+    }
+    await wait(cleanupPollMs);
+  }
+
+  return !isProcessGroupAlive(pid);
+}
+
+export async function runTrustedProcess(
+  policy: GraphifySafetyPolicy,
+  argv: readonly string[],
+): Promise<TrustedProcessResult> {
+  const safeRoots = assertSafeRoots(policy);
+  assertTrustedExecutable(policy.trustedExecutable);
+  assertNoRepositoryControlledArguments(argv);
+
+  try {
+    await policy.networkIsolation.assertEnforced();
+  } catch {
+    throw new GraphifySafetyError(
+      'NETWORK_ISOLATION_UNAVAILABLE',
+      'network isolation capability is unavailable',
+    );
+  }
+
+  return new Promise<TrustedProcessResult>((resolve, reject) => {
+    const startedAt = performance.now();
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let settled = false;
+
+    const child = spawn(policy.trustedExecutable, [...argv], {
+      cwd: safeRoots.stagingRoot,
+      detached: process.platform !== 'win32',
+      env: createMinimalEnvironment(process.env, policy.allowedEnvironmentKeys),
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const cleanupDeadlineMs = Math.min(Math.max(policy.timeoutMs, 100), 1_000);
+
+    const settleReject = (error: GraphifySafetyError) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    };
+
+    const terminate = () => killProcessGroup(child.pid);
+
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      terminate();
+      void waitForProcessGroupExit(child.pid, cleanupDeadlineMs).then(() => {
+        reject(
+          immutableDiagnosticsError(
+            new GraphifySafetyError(
+              'TIMEOUT',
+              'trusted process timed out',
+              'trusted process timed out; process group cleanup completed or reached the bounded cleanup deadline',
+            ),
+          ),
+        );
+      });
+    }, policy.timeoutMs);
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      appendBounded(
+        stdoutChunks,
+        chunk,
+        policy.maxOutputBytes,
+        settleReject,
+        terminate,
+      );
+    });
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      appendBounded(
+        stderrChunks,
+        chunk,
+        policy.maxOutputBytes,
+        settleReject,
+        terminate,
+      );
+    });
+
+    child.on('error', () => {
+      settleReject(
+        new GraphifySafetyError(
+          'PROCESS_FAILED',
+          'trusted process failed to start or execute',
+        ),
+      );
+    });
+
+    child.on('close', (exitCode) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      resolve({
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        exitCode: exitCode ?? 0,
+        timedOut: false,
+        elapsedMs: performance.now() - startedAt,
+      });
+    });
+  });
+}
