@@ -524,6 +524,46 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
+  test('hard-denies sensitive LC_* selector names before locale allowances', () => {
+    const sensitiveLocaleSelectors = [
+      'LC_AUTH',
+      'LC_TOKEN',
+      'LC_GITHUB_APP_ID',
+      'LC_CUSTOM_CONFIG',
+      'LC_CERTPATH',
+      'LC_PASSPHRASE',
+      'LC_AUTHORIZATION_HEADER',
+    ];
+    const sourceEnvironment = Object.fromEntries([
+      ['PATH', '/usr/bin'],
+      ['LANG', 'C'],
+      ['LC_ALL', 'C'],
+      ['LC_CTYPE', 'UTF-8'],
+      ...sensitiveLocaleSelectors.map((key) => [
+        key,
+        `selector-value-for-${key}`,
+      ]),
+    ]);
+
+    const environment = createMinimalEnvironment(sourceEnvironment, [
+      'PATH',
+      'LANG',
+      'LC_ALL',
+      'LC_CTYPE',
+      ...sensitiveLocaleSelectors,
+    ]);
+
+    expect(environment).toEqual({
+      PATH: '/usr/bin',
+      LANG: 'C',
+      LC_ALL: 'C',
+      LC_CTYPE: 'UTF-8',
+    });
+    for (const key of sensitiveLocaleSelectors) {
+      expect(environment).not.toHaveProperty(key);
+    }
+  });
+
   test('preserves spaces, tabs, newlines, Unicode, and leading dashes in argv', async () => {
     const paths = createSafetyPaths();
     const argv = [

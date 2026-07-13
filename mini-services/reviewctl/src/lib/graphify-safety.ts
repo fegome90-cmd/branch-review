@@ -463,19 +463,15 @@ function isBlockedEnvironmentKey(key: string): boolean {
   const normalizedKey = key.toUpperCase();
   const compactKey = normalizedKey.replace(/[^A-Z0-9]/gu, '');
   if (
-    normalizedKey === 'PATH' ||
-    normalizedKey === 'LANG' ||
-    normalizedKey.startsWith('LC_')
-  ) {
-    return false;
-  }
-
-  return (
     blockedEnvironmentKeyNames.has(normalizedKey) ||
     blockedEnvironmentKeySubstrings.some((substring) =>
       compactKey.includes(substring),
     )
-  );
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export function createMinimalEnvironment(
