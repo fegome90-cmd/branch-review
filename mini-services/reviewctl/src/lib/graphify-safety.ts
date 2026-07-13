@@ -1,7 +1,5 @@
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { performance } from 'node:perf_hooks';
 
 export interface GraphifySafetyPolicy {
   reviewedRepository: string;
@@ -36,8 +34,10 @@ export interface SafeGraphifyRoots {
 
 type SafetyErrorCode =
   | 'INVALID_ROOT'
+  | 'INVALID_POLICY_LIMIT'
   | 'UNTRUSTED_EXECUTABLE'
   | 'REPOSITORY_CONTROLLED_ARGUMENT'
+  | 'FILESYSTEM_ISOLATION_UNAVAILABLE'
   | 'NETWORK_ISOLATION_UNAVAILABLE'
   | 'PROCESS_CONTAINMENT_UNVERIFIED'
   | 'PROCESS_FAILED';
@@ -142,8 +142,6 @@ const blockedEnvironmentKeySubstrings = [
   'DOCKER',
   'VAULT',
 ];
-
-const cleanupPollMs = 10;
 
 function immutableDiagnosticsError(
   error: GraphifySafetyError,
@@ -541,98 +539,27 @@ function assertSupportedTrustedArguments(argv: readonly string[]): void {
   );
 }
 
-function appendBounded(
-  chunks: Buffer[],
-  chunk: Buffer,
-  maxOutputBytes: number,
-): boolean {
-  const nextLength =
-    chunks.reduce((total, item) => total + item.byteLength, 0) +
-    chunk.byteLength;
-  if (nextLength > maxOutputBytes) {
-    return false;
-  }
-  chunks.push(chunk);
-  return true;
-}
-
-function killProcessGroup(pid: number | undefined): void {
-  if (pid === undefined) {
-    return;
-  }
-
-  try {
-    if (process.platform !== 'win32') {
-      process.kill(-pid, 'SIGKILL');
-      return;
-    }
-    process.kill(pid, 'SIGKILL');
-  } catch {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // Best-effort cleanup; callers still fail closed.
-    }
+function assertPositiveSafeInteger(label: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new GraphifySafetyError(
+      'INVALID_POLICY_LIMIT',
+      `${label} must be a positive safe integer`,
+      `${label} validation failed: expected a positive safe integer`,
+    );
   }
 }
 
-function isProcessGroupAlive(pid: number | undefined): boolean {
-  if (pid === undefined) {
-    return false;
-  }
-
-  try {
-    if (process.platform !== 'win32') {
-      process.kill(-pid, 0);
-    } else {
-      process.kill(pid, 0);
-    }
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
+function assertPolicyLimits(policy: GraphifySafetyPolicy): void {
+  assertPositiveSafeInteger('timeoutMs', policy.timeoutMs);
+  assertPositiveSafeInteger('maxOutputBytes', policy.maxOutputBytes);
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitForProcessGroupExit(
-  pid: number | undefined,
-  cleanupDeadlineMs: number,
-): Promise<boolean> {
-  const deadline = performance.now() + cleanupDeadlineMs;
-
-  while (performance.now() < deadline) {
-    if (!isProcessGroupAlive(pid)) {
-      return true;
-    }
-    await wait(cleanupPollMs);
-  }
-
-  return !isProcessGroupAlive(pid);
-}
-
-type ForcedTerminationReason = 'timeout' | 'output limit' | 'start failure';
-
-function containmentUnverifiedError(
-  reason: ForcedTerminationReason,
-): GraphifySafetyError {
+function filesystemIsolationUnavailableError(): GraphifySafetyError {
   return immutableDiagnosticsError(
     new GraphifySafetyError(
-      'PROCESS_CONTAINMENT_UNVERIFIED',
-      `trusted process containment could not be verified after ${reason}`,
-      `trusted process ${reason}; process-group cleanup ran, but arbitrary detached descendant containment is not verifiable by this boundary`,
-    ),
-  );
-}
-
-function processFailedError(diagnostics: string): GraphifySafetyError {
-  return immutableDiagnosticsError(
-    new GraphifySafetyError(
-      'PROCESS_FAILED',
-      'trusted process failed or terminated unexpectedly',
-      diagnostics,
+      'FILESYSTEM_ISOLATION_UNAVAILABLE',
+      'filesystem and process isolation provider is unavailable',
+      'pre-execution isolation failed closed: a genuine host filesystem/process containment provider is required before trusted process execution',
     ),
   );
 }
@@ -644,128 +571,11 @@ export async function runTrustedProcess(
   const safeRoots = assertSafeRoots(policy);
   const trustedExecutable = assertTrustedExecutable(policy.trustedExecutable);
   assertSupportedTrustedArguments(argv);
+  assertPolicyLimits(policy);
+  void safeRoots;
+  void trustedExecutable;
 
-  try {
-    await policy.networkIsolation.assertEnforced();
-  } catch {
-    throw new GraphifySafetyError(
-      'NETWORK_ISOLATION_UNAVAILABLE',
-      'network isolation capability is unavailable',
-    );
-  }
-
-  return new Promise<TrustedProcessResult>((resolve, reject) => {
-    const startedAt = performance.now();
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let settled = false;
-    let timeout: NodeJS.Timeout | undefined;
-
-    const child = spawn(trustedExecutable, [...argv], {
-      cwd: safeRoots.stagingRoot,
-      detached: process.platform !== 'win32',
-      env: createMinimalEnvironment(process.env, policy.allowedEnvironmentKeys),
-      shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    const cleanupDeadlineMs = Math.min(Math.max(policy.timeoutMs, 100), 1_000);
-
-    const stopReadingOutput = () => {
-      child.stdout?.removeAllListeners('data');
-      child.stderr?.removeAllListeners('data');
-    };
-
-    const forceTerminateAndReject = (
-      reason: ForcedTerminationReason,
-      fallbackError?: GraphifySafetyError,
-    ) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      stopReadingOutput();
-      killProcessGroup(child.pid);
-      void waitForProcessGroupExit(child.pid, cleanupDeadlineMs)
-        .then((processGroupExited) => {
-          if (!processGroupExited || reason !== 'start failure') {
-            reject(containmentUnverifiedError(reason));
-            return;
-          }
-          reject(
-            fallbackError ??
-              new GraphifySafetyError(
-                'PROCESS_FAILED',
-                'trusted process failed to start or execute',
-              ),
-          );
-        })
-        .catch(() => {
-          reject(containmentUnverifiedError(reason));
-        });
-    };
-
-    timeout = setTimeout(() => {
-      forceTerminateAndReject('timeout');
-    }, policy.timeoutMs);
-
-    child.stdout?.on('data', (chunk: Buffer) => {
-      if (!appendBounded(stdoutChunks, chunk, policy.maxOutputBytes)) {
-        forceTerminateAndReject('output limit');
-      }
-    });
-
-    child.stderr?.on('data', (chunk: Buffer) => {
-      if (!appendBounded(stderrChunks, chunk, policy.maxOutputBytes)) {
-        forceTerminateAndReject('output limit');
-      }
-    });
-
-    child.on('error', () => {
-      forceTerminateAndReject(
-        'start failure',
-        new GraphifySafetyError(
-          'PROCESS_FAILED',
-          'trusted process failed to start or execute',
-        ),
-      );
-    });
-
-    child.on('close', (exitCode, signal) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-
-      if (signal !== null) {
-        reject(
-          processFailedError(`trusted process terminated by signal ${signal}`),
-        );
-        return;
-      }
-
-      if (exitCode === null) {
-        reject(
-          processFailedError(
-            'trusted process ended without an exit code or signal',
-          ),
-        );
-        return;
-      }
-
-      resolve({
-        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf8'),
-        exitCode,
-        timedOut: false,
-        elapsedMs: performance.now() - startedAt,
-      });
-    });
-  });
+  // A genuine host filesystem/process containment provider is a future
+  // prerequisite; cwd alone is not containment, so Slice 1 fails closed here.
+  throw filesystemIsolationUnavailableError();
 }

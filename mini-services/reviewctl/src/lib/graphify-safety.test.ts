@@ -63,6 +63,18 @@ function canonicalPath(filePath: string): string {
   return fs.realpathSync.native(filePath);
 }
 
+async function expectFilesystemIsolationUnavailable(
+  operation: Promise<unknown>,
+): Promise<unknown> {
+  const error = await operation.catch((caughtError: unknown) => caughtError);
+
+  expect(error).toMatchObject({
+    code: 'FILESYSTEM_ISOLATION_UNAVAILABLE',
+    diagnostics: expect.any(String),
+  });
+  return error;
+}
+
 afterEach(() => {
   while (createdDirectories.length > 0) {
     const directory = createdDirectories.pop();
@@ -292,22 +304,28 @@ describe('Graphify trusted execution contract', () => {
     );
   });
 
-  test('uses a fixed staging cwd and never the reviewed repository', async () => {
+  test('rejects execution before relying on cwd as containment', async () => {
     const paths = createSafetyPaths();
+    const marker = path.join(paths.stagingRoot, 'cwd-marker');
 
-    const result = await runTrustedProcess(
-      createPolicy(paths),
-      nodeArgv('process.stdout.write(process.cwd())'),
+    await expectFilesystemIsolationUnavailable(
+      runTrustedProcess(
+        createPolicy(paths),
+        nodeArgv(
+          `require('node:fs').writeFileSync(${JSON.stringify(marker)}, process.cwd())`,
+        ),
+      ),
     );
 
-    expect(canonicalPath(result.stdout)).toBe(canonicalPath(paths.stagingRoot));
-    expect(canonicalPath(result.stdout)).not.toBe(
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(canonicalPath(paths.stagingRoot)).not.toBe(
       canonicalPath(paths.reviewedRepository),
     );
   });
 
-  test('passes only the deterministic policy-owned environment to the child', async () => {
+  test('constructs deterministic policy-owned environment but rejects execution before passing it to a child', async () => {
     const paths = createSafetyPaths();
+    const marker = path.join(paths.stagingRoot, 'environment-marker');
     const sourceEnvironment = {
       PATH: '/attacker/bin',
       LANG: 'attacker-locale',
@@ -332,15 +350,16 @@ describe('Graphify trusted execution contract', () => {
     Object.assign(process.env, sourceEnvironment);
 
     try {
-      const result = await runTrustedProcess(
-        createPolicy(paths),
-        nodeArgv('process.stdout.write(JSON.stringify(process.env))'),
+      await expectFilesystemIsolationUnavailable(
+        runTrustedProcess(
+          createPolicy(paths),
+          nodeArgv(
+            `require('node:fs').writeFileSync(${JSON.stringify(marker)}, JSON.stringify(process.env))`,
+          ),
+        ),
       );
 
-      expect(JSON.parse(result.stdout)).toEqual({
-        LANG: 'C',
-        PATH: '/usr/bin:/bin',
-      });
+      expect(fs.existsSync(marker)).toBe(false);
     } finally {
       for (const [key, value] of previousEnvironment) {
         if (value === undefined) {
@@ -352,23 +371,25 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
-  test('does not let process.env mutations influence fixed safe child environment values', async () => {
+  test('does not let process.env mutations influence fixed safe environment values before rejecting execution', async () => {
     const paths = createSafetyPaths();
+    const marker = path.join(paths.stagingRoot, 'mutated-environment-marker');
     const previousPath = process.env.PATH;
     const previousLang = process.env.LANG;
     process.env.PATH = '/repo-controlled/bin';
     process.env.LANG = 'repo_CONTROLLED.UTF-8';
 
     try {
-      const result = await runTrustedProcess(
-        createPolicy(paths),
-        nodeArgv('process.stdout.write(JSON.stringify(process.env))'),
+      await expectFilesystemIsolationUnavailable(
+        runTrustedProcess(
+          createPolicy(paths),
+          nodeArgv(
+            `require('node:fs').writeFileSync(${JSON.stringify(marker)}, JSON.stringify(process.env))`,
+          ),
+        ),
       );
 
-      expect(JSON.parse(result.stdout)).toEqual({
-        LANG: 'C',
-        PATH: '/usr/bin:/bin',
-      });
+      expect(fs.existsSync(marker)).toBe(false);
     } finally {
       if (previousPath === undefined) {
         delete process.env.PATH;
@@ -620,8 +641,9 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
-  test('preserves spaces, tabs, newlines, Unicode, and leading dashes in argv', async () => {
+  test('accepts safe argv shape with spaces, tabs, newlines, Unicode, and leading dashes before rejecting execution', async () => {
     const paths = createSafetyPaths();
+    const marker = path.join(paths.stagingRoot, 'argv-marker');
     const argv = [
       'value with spaces',
       'value\twith\ttabs',
@@ -630,32 +652,165 @@ describe('Graphify trusted execution contract', () => {
       '--leading-dash',
     ];
 
-    const result = await runTrustedProcess(
-      createPolicy(paths),
-      nodeArgv(
-        'process.stdout.write(JSON.stringify(process.argv.slice(1)))',
-        argv,
+    await expectFilesystemIsolationUnavailable(
+      runTrustedProcess(
+        createPolicy(paths),
+        nodeArgv(
+          `require('node:fs').writeFileSync(${JSON.stringify(marker)}, JSON.stringify(process.argv.slice(1)))`,
+          argv,
+        ),
       ),
     );
 
-    expect(JSON.parse(result.stdout)).toEqual(argv);
+    expect(fs.existsSync(marker)).toBe(false);
   });
 
-  test('disables the shell', async () => {
+  test('rejects execution before shell metacharacters can create a marker', async () => {
     const paths = createSafetyPaths();
     const marker = path.join(paths.sandbox, 'shell-marker');
     const shellPayload = `$(touch ${marker})`;
 
-    const result = await runTrustedProcess(
-      createPolicy(paths),
-      nodeArgv('process.stdout.write(process.argv[1] ?? "")', [shellPayload]),
+    await expectFilesystemIsolationUnavailable(
+      runTrustedProcess(
+        createPolicy(paths),
+        nodeArgv('process.stdout.write(process.argv[1] ?? "")', [shellPayload]),
+      ),
     );
 
-    expect(result.stdout).toBe(shellPayload);
     expect(fs.existsSync(marker)).toBe(false);
   });
 
-  test('fails closed with containment verification when stdout or stderr exceeds the configured limits', async () => {
+  test('rejects invalid timeout and output limits before network callback or child creation', async () => {
+    const invalidLimits = [
+      { field: 'timeoutMs', value: Number.NaN },
+      { field: 'timeoutMs', value: Number.POSITIVE_INFINITY },
+      { field: 'timeoutMs', value: -1 },
+      { field: 'timeoutMs', value: 0 },
+      { field: 'timeoutMs', value: 1.5 },
+      { field: 'timeoutMs', value: Number.MAX_SAFE_INTEGER + 1 },
+      { field: 'maxOutputBytes', value: Number.NaN },
+      { field: 'maxOutputBytes', value: Number.POSITIVE_INFINITY },
+      { field: 'maxOutputBytes', value: -1 },
+      { field: 'maxOutputBytes', value: 0 },
+      { field: 'maxOutputBytes', value: 1.5 },
+      { field: 'maxOutputBytes', value: Number.MAX_SAFE_INTEGER + 1 },
+    ] as const;
+
+    for (const invalidLimit of invalidLimits) {
+      const paths = createSafetyPaths();
+      const marker = path.join(
+        paths.stagingRoot,
+        `${invalidLimit.field}-${String(invalidLimit.value)}-marker`,
+      );
+      let networkCallbackInvoked = false;
+
+      const error = await runTrustedProcess(
+        createPolicy(paths, {
+          [invalidLimit.field]: invalidLimit.value,
+          networkIsolation: {
+            mode: 'disabled',
+            evidence: 'must not be consulted for invalid limits',
+            assertEnforced: async () => {
+              networkCallbackInvoked = true;
+            },
+          },
+        }),
+        nodeArgv(
+          `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started')`,
+        ),
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(error).toMatchObject({
+        code: 'INVALID_POLICY_LIMIT',
+      });
+      expect(networkCallbackInvoked).toBe(false);
+      expect(fs.existsSync(marker)).toBe(false);
+    }
+  });
+
+  test('rejects forged callback-shaped host capabilities before invoking callbacks or spawning', async () => {
+    const paths = createSafetyPaths();
+    const marker = path.join(paths.stagingRoot, 'forged-capability-marker');
+    let networkCallbackInvoked = false;
+    let forgedFilesystemCallbackInvoked = false;
+    let forgedProcessCallbackInvoked = false;
+    const forgedPolicy = {
+      ...createPolicy(paths, {
+        networkIsolation: {
+          mode: 'disabled',
+          evidence: 'must not be consulted before filesystem isolation exists',
+          assertEnforced: async () => {
+            networkCallbackInvoked = true;
+          },
+        },
+      }),
+      filesystemIsolation: {
+        assertEnforced: async () => {
+          forgedFilesystemCallbackInvoked = true;
+        },
+      },
+      processIsolation: {
+        assertEnforced: async () => {
+          forgedProcessCallbackInvoked = true;
+        },
+      },
+    } as GraphifySafetyPolicy;
+
+    await expectFilesystemIsolationUnavailable(
+      runTrustedProcess(
+        forgedPolicy,
+        nodeArgv(
+          `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started')`,
+        ),
+      ),
+    );
+
+    expect(networkCallbackInvoked).toBe(false);
+    expect(forgedFilesystemCallbackInvoked).toBe(false);
+    expect(forgedProcessCallbackInvoked).toBe(false);
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  test('rejects outside-staging filesystem writes before execution', async () => {
+    const paths = createSafetyPaths();
+    const outsideStagingMarker = path.join(
+      paths.runStoreRoot,
+      'outside-staging-marker',
+    );
+
+    await expectFilesystemIsolationUnavailable(
+      runTrustedProcess(
+        createPolicy(paths),
+        nodeArgv(
+          `require('node:fs').writeFileSync(${JSON.stringify(outsideStagingMarker)}, 'outside')`,
+        ),
+      ),
+    );
+
+    expect(fs.existsSync(outsideStagingMarker)).toBe(false);
+  });
+
+  test('rejects detached-descendant probes before execution', async () => {
+    const paths = createSafetyPaths();
+    const detachedChildStartedMarker = path.join(
+      paths.sandbox,
+      'pre-execution-detached-child-started',
+    );
+    const parentScript = [
+      "const { spawn } = require('node:child_process')",
+      "const fs = require('node:fs')",
+      `spawn(process.execPath, ['-e', ${JSON.stringify(`require('node:fs').writeFileSync(${JSON.stringify(detachedChildStartedMarker)}, 'started'); setTimeout(() => {}, 60_000)`)}], { detached: true, stdio: 'ignore' }).unref()`,
+      "process.stdout.write('parent done')",
+    ].join(';');
+
+    await expectFilesystemIsolationUnavailable(
+      runTrustedProcess(createPolicy(paths), nodeArgv(parentScript)),
+    );
+
+    expect(fs.existsSync(detachedChildStartedMarker)).toBe(false);
+  });
+
+  test('rejects otherwise-valid execution before relying on output-limit containment', async () => {
     const outputs = [
       "process.stdout.write('x'.repeat(1024 * 1024 + 1))",
       "process.stderr.write('x'.repeat(1024 * 1024 + 1))",
@@ -664,30 +819,24 @@ describe('Graphify trusted execution contract', () => {
     for (const script of outputs) {
       const paths = createSafetyPaths();
 
-      await expect(
+      await expectFilesystemIsolationUnavailable(
         runTrustedProcess(createPolicy(paths), nodeArgv(script)),
-      ).rejects.toMatchObject({
-        code: 'PROCESS_CONTAINMENT_UNVERIFIED',
-        diagnostics: expect.stringContaining('output limit'),
-      });
+      );
     }
   });
 
-  test('rejects a child that terminates itself with SIGTERM instead of reporting success', async () => {
+  test('rejects execution before a child can terminate itself with SIGTERM', async () => {
     const paths = createSafetyPaths();
 
-    await expect(
+    await expectFilesystemIsolationUnavailable(
       runTrustedProcess(
         createPolicy(paths),
         nodeArgv("process.kill(process.pid, 'SIGTERM')"),
       ),
-    ).rejects.toMatchObject({
-      code: 'PROCESS_FAILED',
-      diagnostics: expect.any(String),
-    });
+    );
   });
 
-  test('does not report safe output-limit containment while a detached descendant survives', async () => {
+  test('rejects output-limit detached-descendant probe before execution', async () => {
     const paths = createSafetyPaths();
     const detachedChildStartedMarker = path.join(
       paths.sandbox,
@@ -720,18 +869,13 @@ describe('Graphify trusted execution contract', () => {
     ].join(';');
 
     try {
-      const error = await runTrustedProcess(
-        createPolicy(paths),
-        nodeArgv(parentScript),
-      ).catch((caughtError: unknown) => caughtError);
+      await expectFilesystemIsolationUnavailable(
+        runTrustedProcess(createPolicy(paths), nodeArgv(parentScript)),
+      );
 
-      expect(error).toMatchObject({
-        code: 'PROCESS_CONTAINMENT_UNVERIFIED',
-        diagnostics: expect.any(String),
-      });
-      expect(fs.existsSync(detachedChildStartedMarker)).toBe(true);
+      expect(fs.existsSync(detachedChildStartedMarker)).toBe(false);
       await new Promise((resolve) => setTimeout(resolve, 400));
-      expect(fs.existsSync(detachedChildSurvivedMarker)).toBe(true);
+      expect(fs.existsSync(detachedChildSurvivedMarker)).toBe(false);
     } finally {
       if (fs.existsSync(detachedChildPidFile)) {
         try {
@@ -746,7 +890,7 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
-  test('returns a distinct fail-closed containment error on timeout', async () => {
+  test('rejects execution before timeout containment is needed', async () => {
     const paths = createSafetyPaths();
     const startedChildMarker = path.join(paths.sandbox, 'started-child');
     const survivingChildMarker = path.join(paths.sandbox, 'surviving-child');
@@ -757,20 +901,18 @@ describe('Graphify trusted execution contract', () => {
     try {
       const childScript = `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(startedChildMarker)}, 'started'); setTimeout(() => fs.writeFileSync(${JSON.stringify(survivingChildMarker)}, 'survived'), 300); setTimeout(() => {}, 60_000)`;
       const parentScript = `const { spawn } = require('node:child_process'); const fs = require('node:fs'); spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { stdio: 'ignore' }); while (!fs.existsSync(${JSON.stringify(startedChildMarker)})) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); } setTimeout(() => {}, 60_000)`;
-      const error = await runTrustedProcess(
-        createPolicy(paths, { timeoutMs: 50 }),
-        nodeArgv(parentScript),
-      ).catch((caughtError: unknown) => caughtError);
+      const error = await expectFilesystemIsolationUnavailable(
+        runTrustedProcess(
+          createPolicy(paths, { timeoutMs: 50 }),
+          nodeArgv(parentScript),
+        ),
+      );
 
-      expect(error).toMatchObject({
-        code: 'PROCESS_CONTAINMENT_UNVERIFIED',
-        diagnostics: expect.any(String),
-      });
       expect((error as { diagnostics: string }).diagnostics).not.toContain(
         secret,
       );
       expect(JSON.stringify(error)).not.toContain(secret);
-      expect(fs.existsSync(startedChildMarker)).toBe(true);
+      expect(fs.existsSync(startedChildMarker)).toBe(false);
       await new Promise((resolve) => setTimeout(resolve, 400));
       expect(fs.existsSync(survivingChildMarker)).toBe(false);
     } finally {
@@ -782,7 +924,7 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
-  test('does not report detached descendants as safely contained after timeout', async () => {
+  test('rejects timeout detached-descendant probe before execution', async () => {
     const paths = createSafetyPaths();
     const detachedChildStartedMarker = path.join(
       paths.sandbox,
@@ -811,18 +953,16 @@ describe('Graphify trusted execution contract', () => {
     ].join(';');
 
     try {
-      const error = await runTrustedProcess(
-        createPolicy(paths, { timeoutMs: 50 }),
-        nodeArgv(parentScript),
-      ).catch((caughtError: unknown) => caughtError);
+      await expectFilesystemIsolationUnavailable(
+        runTrustedProcess(
+          createPolicy(paths, { timeoutMs: 50 }),
+          nodeArgv(parentScript),
+        ),
+      );
 
-      expect(error).toMatchObject({
-        code: 'PROCESS_CONTAINMENT_UNVERIFIED',
-        diagnostics: expect.any(String),
-      });
-      expect(fs.existsSync(detachedChildStartedMarker)).toBe(true);
+      expect(fs.existsSync(detachedChildStartedMarker)).toBe(false);
       await new Promise((resolve) => setTimeout(resolve, 400));
-      expect(fs.existsSync(detachedChildSurvivedMarker)).toBe(true);
+      expect(fs.existsSync(detachedChildSurvivedMarker)).toBe(false);
     } finally {
       if (fs.existsSync(detachedChildPidFile)) {
         try {
@@ -837,18 +977,19 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
-  test('fails closed when network isolation is unavailable', async () => {
+  test('keeps the network isolation contract but rejects before relying on it as filesystem containment', async () => {
     const paths = createSafetyPaths();
     const startedMarker = path.join(paths.sandbox, 'started-child');
+    let networkCallbackInvoked = false;
 
-    await expect(
+    await expectFilesystemIsolationUnavailable(
       runTrustedProcess(
         createPolicy(paths, {
           networkIsolation: {
             mode: 'disabled',
             evidence: 'unavailable',
             assertEnforced: async () => {
-              throw new Error('network isolation unavailable');
+              networkCallbackInvoked = true;
             },
           },
         }),
@@ -856,7 +997,8 @@ describe('Graphify trusted execution contract', () => {
           `require('node:fs').writeFileSync(${JSON.stringify(startedMarker)}, 'started')`,
         ),
       ),
-    ).rejects.toMatchObject({ code: 'NETWORK_ISOLATION_UNAVAILABLE' });
+    );
+    expect(networkCallbackInvoked).toBe(false);
     expect(fs.existsSync(startedMarker)).toBe(false);
   });
 });
