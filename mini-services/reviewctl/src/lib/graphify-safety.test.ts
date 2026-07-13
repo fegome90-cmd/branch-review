@@ -534,7 +534,7 @@ describe('Graphify trusted execution contract', () => {
     expect(fs.existsSync(marker)).toBe(false);
   });
 
-  test('fails closed when stdout or stderr exceeds the configured limits', async () => {
+  test('fails closed with containment verification when stdout or stderr exceeds the configured limits', async () => {
     const outputs = [
       "process.stdout.write('x'.repeat(1024 * 1024 + 1))",
       "process.stderr.write('x'.repeat(1024 * 1024 + 1))",
@@ -545,7 +545,83 @@ describe('Graphify trusted execution contract', () => {
 
       await expect(
         runTrustedProcess(createPolicy(paths), nodeArgv(script)),
-      ).rejects.toMatchObject({ code: 'OUTPUT_LIMIT' });
+      ).rejects.toMatchObject({
+        code: 'PROCESS_CONTAINMENT_UNVERIFIED',
+        diagnostics: expect.stringContaining('output limit'),
+      });
+    }
+  });
+
+  test('rejects a child that terminates itself with SIGTERM instead of reporting success', async () => {
+    const paths = createSafetyPaths();
+
+    await expect(
+      runTrustedProcess(
+        createPolicy(paths),
+        nodeArgv("process.kill(process.pid, 'SIGTERM')"),
+      ),
+    ).rejects.toMatchObject({
+      code: 'PROCESS_FAILED',
+      diagnostics: expect.any(String),
+    });
+  });
+
+  test('does not report safe output-limit containment while a detached descendant survives', async () => {
+    const paths = createSafetyPaths();
+    const detachedChildStartedMarker = path.join(
+      paths.sandbox,
+      'output-limit-detached-child-started',
+    );
+    const detachedChildSurvivedMarker = path.join(
+      paths.sandbox,
+      'output-limit-detached-child-survived',
+    );
+    const detachedChildPidFile = path.join(
+      paths.sandbox,
+      'output-limit-detached-child.pid',
+    );
+
+    const childScript = [
+      "const fs = require('node:fs')",
+      `fs.writeFileSync(${JSON.stringify(detachedChildPidFile)}, String(process.pid))`,
+      `fs.writeFileSync(${JSON.stringify(detachedChildStartedMarker)}, 'started')`,
+      `setTimeout(() => fs.writeFileSync(${JSON.stringify(detachedChildSurvivedMarker)}, 'survived'), 250)`,
+      'setTimeout(() => {}, 60_000)',
+    ].join(';');
+    const parentScript = [
+      "const { spawn } = require('node:child_process')",
+      "const fs = require('node:fs')",
+      `const child = spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { detached: true, stdio: 'ignore' })`,
+      'child.unref()',
+      `while (!fs.existsSync(${JSON.stringify(detachedChildStartedMarker)})) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10) }`,
+      "process.stdout.write('x'.repeat(1024 * 1024 + 1))",
+      'setTimeout(() => {}, 60_000)',
+    ].join(';');
+
+    try {
+      const error = await runTrustedProcess(
+        createPolicy(paths),
+        nodeArgv(parentScript),
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(error).toMatchObject({
+        code: 'PROCESS_CONTAINMENT_UNVERIFIED',
+        diagnostics: expect.any(String),
+      });
+      expect(fs.existsSync(detachedChildStartedMarker)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(fs.existsSync(detachedChildSurvivedMarker)).toBe(true);
+    } finally {
+      if (fs.existsSync(detachedChildPidFile)) {
+        try {
+          process.kill(
+            Number(fs.readFileSync(detachedChildPidFile, 'utf8')),
+            'SIGKILL',
+          );
+        } catch {
+          // The process may have already exited; cleanup is best effort.
+        }
+      }
     }
   });
 

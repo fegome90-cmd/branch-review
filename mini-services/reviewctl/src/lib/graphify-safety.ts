@@ -533,23 +533,15 @@ function appendBounded(
   chunks: Buffer[],
   chunk: Buffer,
   maxOutputBytes: number,
-  reject: (error: GraphifySafetyError) => void,
-  terminate: () => void,
-): void {
+): boolean {
   const nextLength =
     chunks.reduce((total, item) => total + item.byteLength, 0) +
     chunk.byteLength;
   if (nextLength > maxOutputBytes) {
-    terminate();
-    reject(
-      new GraphifySafetyError(
-        'OUTPUT_LIMIT',
-        'trusted process output exceeded configured byte limit',
-      ),
-    );
-    return;
+    return false;
   }
   chunks.push(chunk);
+  return true;
 }
 
 function killProcessGroup(pid: number | undefined): void {
@@ -609,6 +601,30 @@ async function waitForProcessGroupExit(
   return !isProcessGroupAlive(pid);
 }
 
+type ForcedTerminationReason = 'timeout' | 'output limit' | 'start failure';
+
+function containmentUnverifiedError(
+  reason: ForcedTerminationReason,
+): GraphifySafetyError {
+  return immutableDiagnosticsError(
+    new GraphifySafetyError(
+      'PROCESS_CONTAINMENT_UNVERIFIED',
+      `trusted process containment could not be verified after ${reason}`,
+      `trusted process ${reason}; process-group cleanup ran, but arbitrary detached descendant containment is not verifiable by this boundary`,
+    ),
+  );
+}
+
+function processFailedError(diagnostics: string): GraphifySafetyError {
+  return immutableDiagnosticsError(
+    new GraphifySafetyError(
+      'PROCESS_FAILED',
+      'trusted process failed or terminated unexpectedly',
+      diagnostics,
+    ),
+  );
+}
+
 export async function runTrustedProcess(
   policy: GraphifySafetyPolicy,
   argv: readonly string[],
@@ -631,6 +647,7 @@ export async function runTrustedProcess(
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let settled = false;
+    let timeout: NodeJS.Timeout | undefined;
 
     const child = spawn(trustedExecutable, [...argv], {
       cwd: safeRoots.stagingRoot,
@@ -642,58 +659,62 @@ export async function runTrustedProcess(
 
     const cleanupDeadlineMs = Math.min(Math.max(policy.timeoutMs, 100), 1_000);
 
-    const settleReject = (error: GraphifySafetyError) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      reject(error);
+    const stopReadingOutput = () => {
+      child.stdout?.removeAllListeners('data');
+      child.stderr?.removeAllListeners('data');
     };
 
-    const terminate = () => killProcessGroup(child.pid);
-
-    const timeout = setTimeout(() => {
+    const forceTerminateAndReject = (
+      reason: ForcedTerminationReason,
+      fallbackError?: GraphifySafetyError,
+    ) => {
       if (settled) {
         return;
       }
       settled = true;
-      terminate();
-      void waitForProcessGroupExit(child.pid, cleanupDeadlineMs).then(() => {
-        reject(
-          immutableDiagnosticsError(
-            new GraphifySafetyError(
-              'PROCESS_CONTAINMENT_UNVERIFIED',
-              'trusted process containment could not be verified after timeout',
-              'trusted process timed out; process-group cleanup ran, but arbitrary detached descendant containment is not verifiable by this boundary',
-            ),
-          ),
-        );
-      });
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      stopReadingOutput();
+      killProcessGroup(child.pid);
+      void waitForProcessGroupExit(child.pid, cleanupDeadlineMs)
+        .then((processGroupExited) => {
+          if (!processGroupExited || reason !== 'start failure') {
+            reject(containmentUnverifiedError(reason));
+            return;
+          }
+          reject(
+            fallbackError ??
+              new GraphifySafetyError(
+                'PROCESS_FAILED',
+                'trusted process failed to start or execute',
+              ),
+          );
+        })
+        .catch(() => {
+          reject(containmentUnverifiedError(reason));
+        });
+    };
+
+    timeout = setTimeout(() => {
+      forceTerminateAndReject('timeout');
     }, policy.timeoutMs);
 
     child.stdout?.on('data', (chunk: Buffer) => {
-      appendBounded(
-        stdoutChunks,
-        chunk,
-        policy.maxOutputBytes,
-        settleReject,
-        terminate,
-      );
+      if (!appendBounded(stdoutChunks, chunk, policy.maxOutputBytes)) {
+        forceTerminateAndReject('output limit');
+      }
     });
 
     child.stderr?.on('data', (chunk: Buffer) => {
-      appendBounded(
-        stderrChunks,
-        chunk,
-        policy.maxOutputBytes,
-        settleReject,
-        terminate,
-      );
+      if (!appendBounded(stderrChunks, chunk, policy.maxOutputBytes)) {
+        forceTerminateAndReject('output limit');
+      }
     });
 
     child.on('error', () => {
-      settleReject(
+      forceTerminateAndReject(
+        'start failure',
         new GraphifySafetyError(
           'PROCESS_FAILED',
           'trusted process failed to start or execute',
@@ -701,16 +722,35 @@ export async function runTrustedProcess(
       );
     });
 
-    child.on('close', (exitCode) => {
+    child.on('close', (exitCode, signal) => {
       if (settled) {
         return;
       }
       settled = true;
-      clearTimeout(timeout);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+
+      if (signal !== null) {
+        reject(
+          processFailedError(`trusted process terminated by signal ${signal}`),
+        );
+        return;
+      }
+
+      if (exitCode === null) {
+        reject(
+          processFailedError(
+            'trusted process ended without an exit code or signal',
+          ),
+        );
+        return;
+      }
+
       resolve({
         stdout: Buffer.concat(stdoutChunks).toString('utf8'),
         stderr: Buffer.concat(stderrChunks).toString('utf8'),
-        exitCode: exitCode ?? 0,
+        exitCode,
         timedOut: false,
         elapsedMs: performance.now() - startedAt,
       });
