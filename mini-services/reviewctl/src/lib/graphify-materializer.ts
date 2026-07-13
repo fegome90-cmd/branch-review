@@ -474,6 +474,14 @@ function invalidByteLimit(): GraphifyMaterializerError {
   );
 }
 
+function invalidFileLimit(): GraphifyMaterializerError {
+  return new GraphifyMaterializerError(
+    'MATERIALIZATION_LIMIT_EXCEEDED',
+    'Materialization file limit must be a non-negative safe integer',
+    'invalid materialization file limit',
+  );
+}
+
 function assertValidOptionalByteLimit(value: number | undefined): void {
   if (value === undefined) {
     return;
@@ -486,6 +494,9 @@ function assertValidOptionalByteLimit(value: number | undefined): void {
 function assertValidMaterializationLimits(
   options: MaterializeGitFileSetOptions,
 ): void {
+  if (!Number.isSafeInteger(options.maxFiles) || options.maxFiles < 0) {
+    throw invalidFileLimit();
+  }
   assertValidOptionalByteLimit(options.maxFileBytes);
   assertValidOptionalByteLimit(options.maxBytes);
 }
@@ -526,6 +537,14 @@ function validateTreeObjectId(objectId: string): void {
       'malformed Git tree object id',
     );
   }
+}
+
+function malformedTreeOutput(): GraphifyMaterializerError {
+  return new GraphifyMaterializerError(
+    'GIT_COMMAND_FAILED',
+    'Git tree output is malformed',
+    'malformed Git tree output',
+  );
 }
 
 function assertTreePathMatchesRequested(
@@ -574,18 +593,18 @@ function parseTreeEntry(
 
   const tabIndex = text.indexOf('\t');
   if (tabIndex === -1) {
-    return undefined;
+    throw malformedTreeOutput();
   }
 
   const metadata = text.slice(0, tabIndex).split(' ');
   if (metadata.length !== 3) {
-    return undefined;
+    throw malformedTreeOutput();
   }
 
   const [mode, objectType, objectId] = metadata;
   const filePath = text.slice(tabIndex + 1);
   if (!mode || !objectType || !objectId || !filePath) {
-    return undefined;
+    throw malformedTreeOutput();
   }
 
   validateTreeObjectId(objectId);
