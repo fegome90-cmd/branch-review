@@ -5,8 +5,8 @@ import path from 'node:path';
 import {
   assertSafeRoots,
   createMinimalEnvironment,
-  runTrustedProcess,
   type GraphifySafetyPolicy,
+  runTrustedProcess,
 } from './graphify-safety.js';
 
 type SafetyPaths = {
@@ -131,9 +131,7 @@ describe('Graphify safety boundary', () => {
     fs.symlinkSync(escapedTarget, escapedPath, 'dir');
 
     expect(() =>
-      assertSafeRoots(
-        createPolicy(paths, { reviewedRepository: escapedPath }),
-      ),
+      assertSafeRoots(createPolicy(paths, { reviewedRepository: escapedPath })),
     ).toThrow(/symlink|escape|realpath|contain/i);
   });
 
@@ -185,6 +183,22 @@ describe('Graphify trusted execution contract', () => {
     ).rejects.toThrow(/allowlist|trusted/i);
   });
 
+  test('rejects a repository-local symlink to the allowlisted executable', async () => {
+    const paths = createSafetyPaths();
+    const repositoryExecutableAlias = path.join(
+      paths.reviewedRepository,
+      'trusted-executable-alias',
+    );
+    fs.symlinkSync(process.execPath, repositoryExecutableAlias);
+
+    await expect(
+      runTrustedProcess(
+        createPolicy(paths, { trustedExecutable: repositoryExecutableAlias }),
+        nodeArgv('process.stdout.write(process.execPath)'),
+      ),
+    ).rejects.toThrow(/allowlist|trusted|canonical/i);
+  });
+
   test('rejects repository configuration that selects an executable path', async () => {
     const paths = createSafetyPaths();
     const repositoryExecutablePath = path.join(
@@ -208,7 +222,10 @@ describe('Graphify trusted execution contract', () => {
     );
 
     await expect(
-      runTrustedProcess(createPolicy(paths), ['--plugin', repositoryPluginPath]),
+      runTrustedProcess(createPolicy(paths), [
+        '--plugin',
+        repositoryPluginPath,
+      ]),
     ).rejects.toThrow(/repository configuration|plugin|config/i);
   });
 
@@ -224,7 +241,9 @@ describe('Graphify trusted execution contract', () => {
         '--command-template',
         repositoryCommandTemplate,
       ]),
-    ).rejects.toThrow(/repository configuration|command|template|input|trusted/i);
+    ).rejects.toThrow(
+      /repository configuration|command|template|input|trusted/i,
+    );
   });
 
   test('uses a fixed staging cwd and never the reviewed repository', async () => {
@@ -235,9 +254,7 @@ describe('Graphify trusted execution contract', () => {
       nodeArgv('process.stdout.write(process.cwd())'),
     );
 
-    expect(canonicalPath(result.stdout)).toBe(
-      canonicalPath(paths.stagingRoot),
-    );
+    expect(canonicalPath(result.stdout)).toBe(canonicalPath(paths.stagingRoot));
     expect(canonicalPath(result.stdout)).not.toBe(
       canonicalPath(paths.reviewedRepository),
     );
@@ -271,7 +288,9 @@ describe('Graphify trusted execution contract', () => {
     try {
       const result = await runTrustedProcess(
         createPolicy(paths),
-        nodeArgv('process.stdout.write(JSON.stringify(Object.keys(process.env).sort()))'),
+        nodeArgv(
+          'process.stdout.write(JSON.stringify(Object.keys(process.env).sort()))',
+        ),
       );
 
       expect(JSON.parse(result.stdout)).toEqual(['LANG', 'PATH']);
@@ -314,10 +333,7 @@ describe('Graphify trusted execution contract', () => {
 
     const result = await runTrustedProcess(
       createPolicy(paths),
-      nodeArgv(
-        'process.stdout.write(process.argv[1] ?? "")',
-        [shellPayload],
-      ),
+      nodeArgv('process.stdout.write(process.argv[1] ?? "")', [shellPayload]),
     );
 
     expect(result.stdout).toBe(shellPayload);
@@ -326,8 +342,8 @@ describe('Graphify trusted execution contract', () => {
 
   test('fails closed when stdout or stderr exceeds the configured limits', async () => {
     const outputs = [
-      'process.stdout.write(\'x\'.repeat(1024 * 1024 + 1))',
-      'process.stderr.write(\'x\'.repeat(1024 * 1024 + 1))',
+      "process.stdout.write('x'.repeat(1024 * 1024 + 1))",
+      "process.stderr.write('x'.repeat(1024 * 1024 + 1))",
     ];
 
     for (const script of outputs) {

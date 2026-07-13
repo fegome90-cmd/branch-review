@@ -327,7 +327,7 @@ export function createMinimalEnvironment(
   return environment;
 }
 
-function assertTrustedExecutable(executable: string): void {
+function assertTrustedExecutable(executable: string): string {
   if (!path.isAbsolute(executable)) {
     throw new GraphifySafetyError(
       'UNTRUSTED_EXECUTABLE',
@@ -337,12 +337,17 @@ function assertTrustedExecutable(executable: string): void {
 
   const canonicalExecutable = fs.realpathSync.native(executable);
   const canonicalProcessExecutable = fs.realpathSync.native(process.execPath);
-  if (canonicalExecutable !== canonicalProcessExecutable) {
+  if (
+    path.resolve(executable) !== canonicalProcessExecutable ||
+    canonicalExecutable !== canonicalProcessExecutable
+  ) {
     throw new GraphifySafetyError(
       'UNTRUSTED_EXECUTABLE',
-      'trusted executable is outside the allowlist',
+      'trusted executable must match the canonical allowlist path',
     );
   }
+
+  return canonicalProcessExecutable;
 }
 
 function assertNoRepositoryControlledArguments(argv: readonly string[]): void {
@@ -442,7 +447,7 @@ export async function runTrustedProcess(
   argv: readonly string[],
 ): Promise<TrustedProcessResult> {
   const safeRoots = assertSafeRoots(policy);
-  assertTrustedExecutable(policy.trustedExecutable);
+  const trustedExecutable = assertTrustedExecutable(policy.trustedExecutable);
   assertNoRepositoryControlledArguments(argv);
 
   try {
@@ -460,7 +465,7 @@ export async function runTrustedProcess(
     const stderrChunks: Buffer[] = [];
     let settled = false;
 
-    const child = spawn(policy.trustedExecutable, [...argv], {
+    const child = spawn(trustedExecutable, [...argv], {
       cwd: safeRoots.stagingRoot,
       detached: process.platform !== 'win32',
       env: createMinimalEnvironment(process.env, policy.allowedEnvironmentKeys),
