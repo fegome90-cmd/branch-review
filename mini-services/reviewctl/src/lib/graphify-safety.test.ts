@@ -499,6 +499,31 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
+  test('hard-denies compound credential selector names even when explicitly allowlisted', () => {
+    const compoundSelectors = [
+      'CUSTOM_PASSPHRASE',
+      'CUSTOM_AUTHORIZATION_HEADER',
+      'CUSTOM_BEARER',
+      'CUSTOM_CERTPATH',
+    ];
+    const sourceEnvironment = Object.fromEntries([
+      ['PATH', '/usr/bin'],
+      ['LANG', 'C'],
+      ...compoundSelectors.map((key) => [key, `selector-value-for-${key}`]),
+    ]);
+
+    const environment = createMinimalEnvironment(sourceEnvironment, [
+      'PATH',
+      'LANG',
+      ...compoundSelectors,
+    ]);
+
+    expect(environment).toEqual({ PATH: '/usr/bin', LANG: 'C' });
+    for (const key of compoundSelectors) {
+      expect(environment).not.toHaveProperty(key);
+    }
+  });
+
   test('preserves spaces, tabs, newlines, Unicode, and leading dashes in argv', async () => {
     const paths = createSafetyPaths();
     const argv = [

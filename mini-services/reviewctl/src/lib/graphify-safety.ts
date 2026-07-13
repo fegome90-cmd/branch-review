@@ -107,38 +107,41 @@ const blockedEnvironmentKeyNames = new Set([
   'VAULT_TOKEN',
 ]);
 
-const blockedEnvironmentKeyPatterns = [
-  /(^|_)(CONFIG|AUTH|AUTHORITY|CREDENTIALS?|PROFILE|PROVIDER|CLOUD|REVIEW|GITHUB|APP|CERT|CERTIFICATE|PASS|PASSWORD|SSH|AGENT|SOCKET|KEY|TOKEN|SECRET)(_|$)/u,
-  /(^|_)TOKEN$/u,
-  /(^|_)SECRET$/u,
-  /(^|_)KEY$/u,
-  /(^|_)PROVIDER(_FILE)?$/u,
-  /(^|_)CLOUD(_FILE)?$/u,
-  /(^|_)REVIEW(_PROVIDER|_CLOUD)?(_FILE)?$/u,
-  /(^|_)GITHUB(_APP(_ID|_PRIVATE_KEY)?)?$/u,
-  /(^|_)APP(_ID|_PRIVATE_KEY|_KEY|_SECRET)?$/u,
-  /(^|_)API_KEY$/u,
-  /(^|_)ACCESS_KEY_ID$/u,
-  /(^|_)SECRET_ACCESS_KEY$/u,
-  /(^|_)ASKPASS$/u,
-  /(^|_)AUTH_SOCK$/u,
-  /(^|_)SOCKET$/u,
-  /(^|_)AGENT_PID$/u,
-  /(^|_)CREDENTIALS?(_FILE)?$/u,
-  /(^|_)NETRC$/u,
-  /(^|_)CERT(_FILE|_DIR)?$/u,
-  /^AWS_/u,
-  /^AZURE_/u,
-  /^GOOGLE_/u,
-  /^GITHUB_/u,
-  /^CLOUDSDK_/u,
-  /^GIT_/u,
-  /^NPM_CONFIG_/u,
-  /^PNPM_/u,
-  /^YARN_/u,
-  /^DOCKER_/u,
-  /^KUBE/u,
-  /^VAULT_/u,
+const blockedEnvironmentKeySubstrings = [
+  'PASSPHRASE',
+  'AUTHORIZATION',
+  'CREDENTIAL',
+  'PASSWORD',
+  'PROVIDER',
+  'CONFIG',
+  'BEARER',
+  'CERTPATH',
+  'SECRET',
+  'SOCKET',
+  'PROFILE',
+  'GITHUB',
+  'REVIEW',
+  'TOKEN',
+  'CLOUD',
+  'AGENT',
+  'NETRC',
+  'PASS',
+  'AUTH',
+  'CERT',
+  'KEY',
+  'SSH',
+  'APP',
+  'PNPM',
+  'YARN',
+  'KUBE',
+  'AWS',
+  'AZURE',
+  'GOOGLE',
+  'CLOUDSDK',
+  'GIT',
+  'NPM',
+  'DOCKER',
+  'VAULT',
 ];
 
 const cleanupPollMs = 10;
@@ -458,9 +461,20 @@ export function assertSafeRoots(
 
 function isBlockedEnvironmentKey(key: string): boolean {
   const normalizedKey = key.toUpperCase();
+  const compactKey = normalizedKey.replace(/[^A-Z0-9]/gu, '');
+  if (
+    normalizedKey === 'PATH' ||
+    normalizedKey === 'LANG' ||
+    normalizedKey.startsWith('LC_')
+  ) {
+    return false;
+  }
+
   return (
     blockedEnvironmentKeyNames.has(normalizedKey) ||
-    blockedEnvironmentKeyPatterns.some((pattern) => pattern.test(normalizedKey))
+    blockedEnvironmentKeySubstrings.some((substring) =>
+      compactKey.includes(substring),
+    )
   );
 }
 
