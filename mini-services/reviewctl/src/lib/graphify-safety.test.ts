@@ -306,11 +306,11 @@ describe('Graphify trusted execution contract', () => {
     );
   });
 
-  test('passes only the minimal allowlisted environment to the child', async () => {
+  test('passes only the deterministic policy-owned environment to the child', async () => {
     const paths = createSafetyPaths();
     const sourceEnvironment = {
-      PATH: '/usr/bin',
-      LANG: 'C',
+      PATH: '/attacker/bin',
+      LANG: 'attacker-locale',
       REVIEW_API_TOKEN: 'review-secret',
       GITHUB_TOKEN: 'github-secret',
       GH_TOKEN: 'gh-secret',
@@ -324,7 +324,7 @@ describe('Graphify trusted execution contract', () => {
       'LANG',
     ]);
 
-    expect(environment).toEqual({ PATH: '/usr/bin', LANG: 'C' });
+    expect(environment).toEqual({ PATH: '/usr/bin:/bin', LANG: 'C' });
 
     const previousEnvironment = new Map(
       Object.keys(sourceEnvironment).map((key) => [key, process.env[key]]),
@@ -334,12 +334,13 @@ describe('Graphify trusted execution contract', () => {
     try {
       const result = await runTrustedProcess(
         createPolicy(paths),
-        nodeArgv(
-          'process.stdout.write(JSON.stringify(Object.keys(process.env).sort()))',
-        ),
+        nodeArgv('process.stdout.write(JSON.stringify(process.env))'),
       );
 
-      expect(JSON.parse(result.stdout)).toEqual(['LANG', 'PATH']);
+      expect(JSON.parse(result.stdout)).toEqual({
+        LANG: 'C',
+        PATH: '/usr/bin:/bin',
+      });
     } finally {
       for (const [key, value] of previousEnvironment) {
         if (value === undefined) {
@@ -347,6 +348,37 @@ describe('Graphify trusted execution contract', () => {
         } else {
           process.env[key] = value;
         }
+      }
+    }
+  });
+
+  test('does not let process.env mutations influence fixed safe child environment values', async () => {
+    const paths = createSafetyPaths();
+    const previousPath = process.env.PATH;
+    const previousLang = process.env.LANG;
+    process.env.PATH = '/repo-controlled/bin';
+    process.env.LANG = 'repo_CONTROLLED.UTF-8';
+
+    try {
+      const result = await runTrustedProcess(
+        createPolicy(paths),
+        nodeArgv('process.stdout.write(JSON.stringify(process.env))'),
+      );
+
+      expect(JSON.parse(result.stdout)).toEqual({
+        LANG: 'C',
+        PATH: '/usr/bin:/bin',
+      });
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPath;
+      }
+      if (previousLang === undefined) {
+        delete process.env.LANG;
+      } else {
+        process.env.LANG = previousLang;
       }
     }
   });
@@ -396,7 +428,7 @@ describe('Graphify trusted execution contract', () => {
       ...providerCredentialSelectors,
     ]);
 
-    expect(environment).toEqual({ PATH: '/usr/bin' });
+    expect(environment).toEqual({ PATH: '/usr/bin:/bin' });
     for (const key of providerCredentialSelectors) {
       expect(environment).not.toHaveProperty(key);
     }
@@ -420,7 +452,7 @@ describe('Graphify trusted execution contract', () => {
       ...genericSelectors,
     ]);
 
-    expect(environment).toEqual({ PATH: '/usr/bin', LANG: 'C' });
+    expect(environment).toEqual({ PATH: '/usr/bin:/bin', LANG: 'C' });
     for (const key of genericSelectors) {
       expect(environment).not.toHaveProperty(key);
     }
@@ -452,7 +484,7 @@ describe('Graphify trusted execution contract', () => {
       ...genericSelectors,
     ]);
 
-    expect(environment).toEqual({ PATH: '/usr/bin', LANG: 'C' });
+    expect(environment).toEqual({ PATH: '/usr/bin:/bin', LANG: 'C' });
     for (const key of genericSelectors) {
       expect(environment).not.toHaveProperty(key);
     }
@@ -493,7 +525,7 @@ describe('Graphify trusted execution contract', () => {
       ...analogousSelectors,
     ]);
 
-    expect(environment).toEqual({ PATH: '/usr/bin', LC_ALL: 'C' });
+    expect(environment).toEqual({ PATH: '/usr/bin:/bin', LC_ALL: 'C' });
     for (const key of analogousSelectors) {
       expect(environment).not.toHaveProperty(key);
     }
@@ -518,7 +550,7 @@ describe('Graphify trusted execution contract', () => {
       ...compoundSelectors,
     ]);
 
-    expect(environment).toEqual({ PATH: '/usr/bin', LANG: 'C' });
+    expect(environment).toEqual({ PATH: '/usr/bin:/bin', LANG: 'C' });
     for (const key of compoundSelectors) {
       expect(environment).not.toHaveProperty(key);
     }
@@ -554,13 +586,37 @@ describe('Graphify trusted execution contract', () => {
     ]);
 
     expect(environment).toEqual({
-      PATH: '/usr/bin',
+      PATH: '/usr/bin:/bin',
       LANG: 'C',
       LC_ALL: 'C',
-      LC_CTYPE: 'UTF-8',
+      LC_CTYPE: 'C.UTF-8',
     });
     for (const key of sensitiveLocaleSelectors) {
       expect(environment).not.toHaveProperty(key);
+    }
+  });
+
+  test('rejects future loader config and alias argv flags outside the supported trusted schema', async () => {
+    const paths = createSafetyPaths();
+    const unsafeArgvShapes = [
+      ['--import', './repo-loader.mjs'],
+      ['--require', './repo-hook.cjs'],
+      ['--experimental-loader=./repo-loader.mjs'],
+      ['--loader', './repo-loader.mjs'],
+      ['--env-file', './repo.env'],
+      ['--config', './repo-config.json'],
+      ['--eval', 'process.stdout.write("unsafe")'],
+      ['--print', 'process.cwd()'],
+      ['--run', 'repo-script'],
+      ['--conditions', 'repo-condition'],
+    ];
+
+    for (const argv of unsafeArgvShapes) {
+      await expect(
+        runTrustedProcess(createPolicy(paths), argv),
+      ).rejects.toMatchObject({
+        code: 'REPOSITORY_CONTROLLED_ARGUMENT',
+      });
     }
   });
 

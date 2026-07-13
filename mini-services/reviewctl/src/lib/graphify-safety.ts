@@ -39,8 +39,6 @@ type SafetyErrorCode =
   | 'UNTRUSTED_EXECUTABLE'
   | 'REPOSITORY_CONTROLLED_ARGUMENT'
   | 'NETWORK_ISOLATION_UNAVAILABLE'
-  | 'OUTPUT_LIMIT'
-  | 'TIMEOUT'
   | 'PROCESS_CONTAINMENT_UNVERIFIED'
   | 'PROCESS_FAILED';
 
@@ -56,13 +54,14 @@ export class GraphifySafetyError extends Error {
   }
 }
 
-const repositoryControlledArgumentNames = new Set([
-  '--command',
-  '--command-template',
-  '--executable',
-  '--plugin',
-  '--plugin-path',
-]);
+const supportedTrustedNodeFlag = '-e';
+
+const safeEnvironmentValues = {
+  PATH: '/usr/bin:/bin',
+  LANG: 'C',
+  LC_ALL: 'C',
+  LC_CTYPE: 'C.UTF-8',
+} as const satisfies NodeJS.ProcessEnv;
 
 const blockedEnvironmentKeyNames = new Set([
   'REVIEW_API_TOKEN',
@@ -475,7 +474,7 @@ function isBlockedEnvironmentKey(key: string): boolean {
 }
 
 export function createMinimalEnvironment(
-  source: NodeJS.ProcessEnv,
+  _source: NodeJS.ProcessEnv,
   allowedKeys: readonly string[],
 ): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
@@ -485,9 +484,9 @@ export function createMinimalEnvironment(
       continue;
     }
 
-    const value = source[key];
-    if (value !== undefined) {
-      environment[key] = value;
+    if (Object.hasOwn(safeEnvironmentValues, key)) {
+      environment[key] =
+        safeEnvironmentValues[key as keyof typeof safeEnvironmentValues];
     }
   }
 
@@ -527,16 +526,19 @@ function assertTrustedExecutable(executable: string): string {
   return canonicalProcessExecutable;
 }
 
-function assertNoRepositoryControlledArguments(argv: readonly string[]): void {
-  for (const argument of argv) {
-    const [name] = argument.split('=', 1);
-    if (repositoryControlledArgumentNames.has(name)) {
-      throw new GraphifySafetyError(
-        'REPOSITORY_CONTROLLED_ARGUMENT',
-        `repository configuration cannot select ${name} input for the trusted process`,
-      );
-    }
+function assertSupportedTrustedArguments(argv: readonly string[]): void {
+  if (argv.length === 0) {
+    return;
   }
+
+  if (argv[0] === supportedTrustedNodeFlag && argv.length >= 2) {
+    return;
+  }
+
+  throw new GraphifySafetyError(
+    'REPOSITORY_CONTROLLED_ARGUMENT',
+    'repository configuration, plugin, config, loader, alias, and command inputs must match the host-owned trusted argument schema',
+  );
 }
 
 function appendBounded(
@@ -641,7 +643,7 @@ export async function runTrustedProcess(
 ): Promise<TrustedProcessResult> {
   const safeRoots = assertSafeRoots(policy);
   const trustedExecutable = assertTrustedExecutable(policy.trustedExecutable);
-  assertNoRepositoryControlledArguments(argv);
+  assertSupportedTrustedArguments(argv);
 
   try {
     await policy.networkIsolation.assertEnforced();
