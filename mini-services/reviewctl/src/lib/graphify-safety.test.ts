@@ -133,6 +133,18 @@ describe('Graphify safety boundary', () => {
     ).toThrow(/symlink|escape|realpath|contain/i);
   });
 
+  test('rejects roots that resolve to the same realpath', () => {
+    const paths = createSafetyPaths();
+    const repositoryAlias = path.join(paths.sandbox, 'repository-alias');
+    fs.symlinkSync(paths.runStoreRoot, repositoryAlias, 'dir');
+
+    expect(() =>
+      assertSafeRoots(
+        createPolicy(paths, { reviewedRepository: repositoryAlias }),
+      ),
+    ).toThrow(/same|equal|overlap|distinct|realpath/i);
+  });
+
   test('accepts two distinct absolute realpaths', () => {
     const paths = createSafetyPaths();
 
@@ -189,6 +201,21 @@ describe('Graphify trusted execution contract', () => {
     await expect(
       runTrustedProcess(createPolicy(paths), ['--plugin', repositoryPluginPath]),
     ).rejects.toThrow(/repository configuration|plugin|config/i);
+  });
+
+  test('rejects repository configuration that passes arbitrary command template input', async () => {
+    const paths = createSafetyPaths();
+    const repositoryCommandTemplate = path.join(
+      paths.reviewedRepository,
+      'graphify-command-template.json',
+    );
+
+    await expect(
+      runTrustedProcess(createPolicy(paths), [
+        '--command-template',
+        repositoryCommandTemplate,
+      ]),
+    ).rejects.toThrow(/repository configuration|command|template|input|trusted/i);
   });
 
   test('uses a fixed staging cwd and never the reviewed repository', async () => {
