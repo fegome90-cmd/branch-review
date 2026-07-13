@@ -67,6 +67,25 @@ const blockedEnvironmentKeyNames = new Set([
   'REVIEW_API_TOKEN',
   'GH_TOKEN',
   'GITHUB_TOKEN',
+  'GOOGLE_APPLICATION_CREDENTIALS',
+  'GOOGLE_CLOUD_PROJECT',
+  'GOOGLE_CLOUD_QUOTA_PROJECT',
+  'CLOUDSDK_AUTH_ACCESS_TOKEN',
+  'CLOUDSDK_CONFIG',
+  'AWS_PROFILE',
+  'AWS_DEFAULT_PROFILE',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'AWS_SESSION_TOKEN',
+  'AWS_SHARED_CREDENTIALS_FILE',
+  'AWS_CONFIG_FILE',
+  'AZURE_CLIENT_ID',
+  'AZURE_CLIENT_SECRET',
+  'AZURE_TENANT_ID',
+  'AZURE_AUTHORITY_HOST',
+  'KUBECONFIG',
+  'DOCKER_CONFIG',
+  'SSH_AUTH_SOCK',
 ]);
 
 const blockedEnvironmentKeyPatterns = [
@@ -76,6 +95,10 @@ const blockedEnvironmentKeyPatterns = [
   /(^|_)API_KEY$/u,
   /(^|_)ACCESS_KEY_ID$/u,
   /(^|_)SECRET_ACCESS_KEY$/u,
+  /^AWS_/u,
+  /^AZURE_/u,
+  /^GOOGLE_/u,
+  /^CLOUDSDK_/u,
 ];
 
 const cleanupPollMs = 10;
