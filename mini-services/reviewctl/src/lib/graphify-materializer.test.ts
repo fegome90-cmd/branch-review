@@ -735,22 +735,53 @@ describe('Graphify Git materializer file boundary', () => {
     ).toBe('dash\n');
     expect(fs.existsSync(path.join(paths.sandbox, 'escape.txt'))).toBe(false);
     expectSourceManifestUnchanged(paths, sourceManifestBefore);
-    expect(git.invocations.map((invocation) => invocation.argv)).toEqual([
-      [
-        'diff',
-        '--name-only',
-        '-z',
-        '--no-ext-diff',
-        '--no-textconv',
-        fullSha.base,
-        fullSha.head,
-        '--',
-      ],
-      ...[...treeEntries.keys()].flatMap((filePath) => [
-        ['ls-tree', '-z', '--full-tree', fullSha.head, '--', filePath],
-        ['cat-file', 'blob', treeEntries.get(filePath)?.objectId ?? ''],
-      ]),
+
+    const invocations = git.invocations.map((invocation) => invocation.argv);
+    expect(invocations[0]).toEqual([
+      'diff',
+      '--name-only',
+      '-z',
+      '--no-ext-diff',
+      '--no-textconv',
+      fullSha.base,
+      fullSha.head,
+      '--',
     ]);
+
+    const lsTreePaths = invocations
+      .filter((argv) => argv[0] === 'ls-tree')
+      .map((argv) => argv.at(-1));
+    const catFileObjectIds = invocations
+      .filter((argv) => argv[0] === 'cat-file')
+      .map((argv) => argv[2]);
+
+    for (const filePath of [
+      'safe file.txt',
+      'tabs\tname.txt',
+      'new\nline.txt',
+      'unicodé-雪.txt',
+      '--leading-dash.txt',
+    ]) {
+      expect(lsTreePaths).toContain(filePath);
+      expect(catFileObjectIds).toContain(treeEntries.get(filePath)?.objectId);
+    }
+
+    for (const unsupportedPath of [
+      'dir/link',
+      'vendor/submodule',
+      'special/fifo',
+    ]) {
+      expect(lsTreePaths).toContain(unsupportedPath);
+      expect(catFileObjectIds).not.toContain(
+        treeEntries.get(unsupportedPath)?.objectId,
+      );
+    }
+
+    for (const unsafePath of ['../escape.txt', '/absolute.txt']) {
+      expect(catFileObjectIds).not.toContain(
+        treeEntries.get(unsafePath)?.objectId,
+      );
+    }
   });
 
   test('fails closed when Git reports a changed path outside the approved path set', async () => {
@@ -785,6 +816,26 @@ describe('Graphify Git materializer file boundary', () => {
     });
     expect(JSON.stringify(error)).toContain(unapprovedFixturePath);
     expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+    expect(git.invocations.map((invocation) => invocation.argv)).toEqual([
+      [
+        'diff',
+        '--name-only',
+        '-z',
+        '--no-ext-diff',
+        '--no-textconv',
+        fullSha.base,
+        fullSha.head,
+        '--',
+      ],
+    ]);
+    expect(
+      git.invocations.some((invocation) =>
+        invocation.argv.includes(unapprovedFixturePath),
+      ),
+    ).toBe(false);
+    expect(
+      git.invocations.some((invocation) => invocation.argv[0] === 'cat-file'),
+    ).toBe(false);
     expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
     expectSourceManifestUnchanged(paths, sourceManifestBefore);
   });
