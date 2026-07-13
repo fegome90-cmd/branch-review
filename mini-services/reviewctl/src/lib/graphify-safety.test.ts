@@ -375,6 +375,71 @@ describe('Graphify trusted execution contract', () => {
     }
   });
 
+  test('hard-denies generic config and socket selectors even when explicitly allowlisted', () => {
+    const genericSelectors = [
+      'CUSTOM_CONFIG',
+      'CUSTOM_CONFIG_FILE',
+      'CUSTOM_SOCKET_PATH',
+    ];
+    const sourceEnvironment = Object.fromEntries([
+      ['PATH', '/usr/bin'],
+      ['LANG', 'C'],
+      ...genericSelectors.map((key) => [key, `selector-value-for-${key}`]),
+    ]);
+
+    const environment = createMinimalEnvironment(sourceEnvironment, [
+      'PATH',
+      'LANG',
+      ...genericSelectors,
+    ]);
+
+    expect(environment).toEqual({ PATH: '/usr/bin', LANG: 'C' });
+    for (const key of genericSelectors) {
+      expect(environment).not.toHaveProperty(key);
+    }
+  });
+
+  test('hard-denies analogous credential selector names even when explicitly allowlisted', () => {
+    const analogousSelectors = [
+      'CUSTOM_CREDENTIAL',
+      'CUSTOM_CREDENTIAL_FILE',
+      'CUSTOM_CREDENTIALS',
+      'CUSTOM_CREDENTIALS_FILE',
+      'CUSTOM_AUTH',
+      'CUSTOM_AUTH_FILE',
+      'CUSTOM_PROFILE',
+      'CUSTOM_CERT',
+      'CUSTOM_CERT_PATH',
+      'CUSTOM_CERT_FILE',
+      'CUSTOM_PASS',
+      'CUSTOM_PASS_FILE',
+      'CUSTOM_PASSWORD_FILE',
+      'CUSTOM_SSH',
+      'CUSTOM_SSH_AGENT',
+      'CUSTOM_SSH_AGENT_PID',
+      'CUSTOM_SSH_AUTH_SOCK',
+      'CUSTOM_PRIVATE_KEY_PATH',
+      'CUSTOM_TOKEN_PATH',
+      'CUSTOM_SECRET_PATH',
+    ];
+    const sourceEnvironment = Object.fromEntries([
+      ['PATH', '/usr/bin'],
+      ['LC_ALL', 'C'],
+      ...analogousSelectors.map((key) => [key, `selector-value-for-${key}`]),
+    ]);
+
+    const environment = createMinimalEnvironment(sourceEnvironment, [
+      'PATH',
+      'LC_ALL',
+      ...analogousSelectors,
+    ]);
+
+    expect(environment).toEqual({ PATH: '/usr/bin', LC_ALL: 'C' });
+    for (const key of analogousSelectors) {
+      expect(environment).not.toHaveProperty(key);
+    }
+  });
+
   test('preserves spaces, tabs, newlines, Unicode, and leading dashes in argv', async () => {
     const paths = createSafetyPaths();
     const argv = [

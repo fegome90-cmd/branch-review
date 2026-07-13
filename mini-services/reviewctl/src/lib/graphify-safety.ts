@@ -108,6 +108,7 @@ const blockedEnvironmentKeyNames = new Set([
 ]);
 
 const blockedEnvironmentKeyPatterns = [
+  /(^|_)(CONFIG|AUTH|AUTHORITY|CREDENTIALS?|PROFILE|CERT|CERTIFICATE|PASS|PASSWORD|SSH|AGENT|SOCKET|KEY|TOKEN|SECRET)(_|$)/u,
   /(^|_)TOKEN$/u,
   /(^|_)SECRET$/u,
   /(^|_)KEY$/u,
