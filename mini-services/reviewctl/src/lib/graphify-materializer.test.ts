@@ -35,6 +35,7 @@ type TreeEntry = {
   mode: string;
   objectId: string;
   content?: string;
+  declaredSize?: number;
 };
 
 const isolatedGitArgvPrefix = [
@@ -131,7 +132,7 @@ function runGit(
   argv: readonly string[],
   env: NodeJS.ProcessEnv = {},
 ): string {
-  const gitExecutable = process.env.GIT_EXECUTABLE ?? '/usr/bin/git';
+  const gitExecutable = '/usr/bin/git';
   return execFileSync(gitExecutable, [...argv], {
     cwd: repositoryRoot,
     encoding: 'utf8',
@@ -151,7 +152,7 @@ function runGit(
 }
 
 function createRealGitTarget(paths: MaterializerTestPaths): RepositoryTarget {
-  const gitExecutable = process.env.GIT_EXECUTABLE ?? '/usr/bin/git';
+  const gitExecutable = '/usr/bin/git';
   runGit(paths.repositoryRoot, ['init', '--initial-branch=main']);
   runGit(paths.repositoryRoot, ['config', 'user.name', 'Reviewctl Test']);
   runGit(paths.repositoryRoot, [
@@ -309,7 +310,7 @@ function assertCanonicalGitInvocation(
     expect(argv.at(-1)).not.toBe('');
   }
   if (command === 'cat-file') {
-    expect(argv).toHaveLength(3);
+    expect([3, 4]).toContain(argv.length);
   }
 }
 
@@ -369,6 +370,7 @@ function createFakeGitRunner(options: {
       const entry = treeEntries.get(filePath);
       return [
         ['ls-tree', '-z', '--full-tree', fullSha.head, '--', filePath],
+        ['cat-file', '-s', entry?.objectId ?? ''],
         ['cat-file', 'blob', entry?.objectId ?? ''],
       ];
     }),
@@ -443,7 +445,20 @@ function createFakeGitRunner(options: {
         };
       }
 
-      if (argv[0] === 'cat-file') {
+      if (argv[0] === 'cat-file' && argv[1] === '-s') {
+        const objectId = argv[2] ?? '';
+        const entry = [...treeEntries.values()].find(
+          (candidate) => candidate.objectId === objectId,
+        );
+        return {
+          stdout: Buffer.from(
+            `${entry?.declaredSize ?? Buffer.byteLength(entry?.content ?? '')}\n`,
+          ),
+          stderr: Buffer.alloc(0),
+        };
+      }
+
+      if (argv[0] === 'cat-file' && argv[1] === 'blob') {
         const objectId = argv[2] ?? '';
         const entry = [...treeEntries.values()].find(
           (candidate) => candidate.objectId === objectId,
@@ -1034,14 +1049,14 @@ describe('Graphify Git materializer file boundary', () => {
     expectSourceManifestUnchanged(paths, sourceManifestBefore);
   });
 
-  test('rejects unsafe staging roots through assertSafeRoots before any Git command runs', async () => {
+  test('rejects unsafe staging roots through assertSafeRoots before any Git command runs and preserves caller-owned repo-local paths', async () => {
     const paths = createPaths();
-    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
     const unsafeStagingRoot = path.join(
       paths.repositoryRoot,
       'controlled-staging',
     );
     fs.mkdirSync(unsafeStagingRoot);
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
     const git = createFakeGitRunner({
       repositoryRoot: paths.repositoryRoot,
       changedPaths: ['safe.txt'],
@@ -1063,23 +1078,371 @@ describe('Graphify Git materializer file boundary', () => {
       code: 'INVALID_ROOT',
     });
     expect(git.invocations).toHaveLength(0);
+    expect(fs.existsSync(unsafeStagingRoot)).toBe(true);
     expectSourceManifestUnchanged(paths, sourceManifestBefore);
+  });
+
+  test('rejects non-empty diff path output that is not terminated by NUL', async () => {
+    const paths = createPaths();
+    const git: FakeGitRunner = {
+      executable: '/usr/bin/git',
+      invocations: [],
+      async run(invocation) {
+        git.invocations.push({
+          ...invocation,
+          argv: [...invocation.argv],
+          env: { ...invocation.env },
+        });
+        assertCanonicalGitInvocation(
+          invocation,
+          invocation.argv,
+          paths.repositoryRoot,
+          git.executable,
+        );
+        const argv = withoutGitIsolationPrefix(invocation.argv);
+        expect(argv[0]).toBe('diff');
+        return { stdout: Buffer.from('safe.txt'), stderr: Buffer.alloc(0) };
+      },
+    };
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'GIT_COMMAND_FAILED',
+      diagnostics: 'malformed NUL-delimited Git output',
+    });
+    expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('rejects empty internal NUL frames in diff path output', async () => {
+    const paths = createPaths();
+    const git: FakeGitRunner = {
+      executable: '/usr/bin/git',
+      invocations: [],
+      async run(invocation) {
+        git.invocations.push({
+          ...invocation,
+          argv: [...invocation.argv],
+          env: { ...invocation.env },
+        });
+        assertCanonicalGitInvocation(
+          invocation,
+          invocation.argv,
+          paths.repositoryRoot,
+          git.executable,
+        );
+        const argv = withoutGitIsolationPrefix(invocation.argv);
+        expect(argv[0]).toBe('diff');
+        return { stdout: Buffer.from('safe.txt\0\0'), stderr: Buffer.alloc(0) };
+      },
+    };
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'GIT_COMMAND_FAILED',
+      diagnostics: 'malformed NUL-delimited Git output',
+    });
+    expect(
+      git.invocations.some(
+        (invocation) =>
+          withoutGitIsolationPrefix(invocation.argv)[0] === 'ls-tree',
+      ),
+    ).toBe(false);
+  });
+
+  test('rejects embedded empty ls-tree frames before treating entries as skipped', async () => {
+    const paths = createPaths();
+    const objectId = 'a'.repeat(40);
+    const git: FakeGitRunner = {
+      executable: '/usr/bin/git',
+      invocations: [],
+      async run(invocation) {
+        git.invocations.push({
+          ...invocation,
+          argv: [...invocation.argv],
+          env: { ...invocation.env },
+        });
+        assertCanonicalGitInvocation(
+          invocation,
+          invocation.argv,
+          paths.repositoryRoot,
+          git.executable,
+        );
+        const argv = withoutGitIsolationPrefix(invocation.argv);
+        if (argv[0] === 'diff') {
+          return { stdout: Buffer.from('safe.txt\0'), stderr: Buffer.alloc(0) };
+        }
+        if (argv[0] === 'ls-tree') {
+          return {
+            stdout: Buffer.concat([
+              Buffer.from([0]),
+              Buffer.from(`100644 blob ${objectId}\tsafe.txt`),
+              Buffer.from([0]),
+            ]),
+            stderr: Buffer.alloc(0),
+          };
+        }
+        throw new Error(`unexpected git argv: ${argv.join(' ')}`);
+      },
+    };
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'GIT_COMMAND_FAILED',
+      diagnostics: 'malformed NUL-delimited Git output',
+    });
+    expect(
+      git.invocations.some(
+        (invocation) =>
+          withoutGitIsolationPrefix(invocation.argv)[0] === 'cat-file',
+      ),
+    ).toBe(false);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('rejects empty NUL-framed ls-tree records before treating entries as skipped', async () => {
+    const paths = createPaths();
+    const git: FakeGitRunner = {
+      executable: '/usr/bin/git',
+      invocations: [],
+      async run(invocation) {
+        git.invocations.push({
+          ...invocation,
+          argv: [...invocation.argv],
+          env: { ...invocation.env },
+        });
+        assertCanonicalGitInvocation(
+          invocation,
+          invocation.argv,
+          paths.repositoryRoot,
+          git.executable,
+        );
+        const argv = withoutGitIsolationPrefix(invocation.argv);
+        if (argv[0] === 'diff') {
+          return { stdout: Buffer.from('safe.txt\0'), stderr: Buffer.alloc(0) };
+        }
+        if (argv[0] === 'ls-tree') {
+          return { stdout: Buffer.from('\0'), stderr: Buffer.alloc(0) };
+        }
+        throw new Error(`unexpected git argv: ${argv.join(' ')}`);
+      },
+    };
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'GIT_COMMAND_FAILED',
+      diagnostics: 'malformed NUL-delimited Git output',
+    });
+    expect(
+      git.invocations.some(
+        (invocation) =>
+          withoutGitIsolationPrefix(invocation.argv)[0] === 'cat-file',
+      ),
+    ).toBe(false);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('rejects non-empty ls-tree output that is not terminated by NUL before blob reads', async () => {
+    const paths = createPaths();
+    const objectId = 'a'.repeat(40);
+    const git: FakeGitRunner = {
+      executable: '/usr/bin/git',
+      invocations: [],
+      async run(invocation) {
+        git.invocations.push({
+          ...invocation,
+          argv: [...invocation.argv],
+          env: { ...invocation.env },
+        });
+        assertCanonicalGitInvocation(
+          invocation,
+          invocation.argv,
+          paths.repositoryRoot,
+          git.executable,
+        );
+        const argv = withoutGitIsolationPrefix(invocation.argv);
+        if (argv[0] === 'diff') {
+          return { stdout: Buffer.from('safe.txt\0'), stderr: Buffer.alloc(0) };
+        }
+        if (argv[0] === 'ls-tree') {
+          return {
+            stdout: Buffer.from(`100644 blob ${objectId}\tsafe.txt`),
+            stderr: Buffer.alloc(0),
+          };
+        }
+        throw new Error(`unexpected git argv: ${argv.join(' ')}`);
+      },
+    };
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'GIT_COMMAND_FAILED',
+      diagnostics: 'malformed NUL-delimited Git output',
+    });
+    expect(
+      git.invocations.some(
+        (invocation) =>
+          withoutGitIsolationPrefix(invocation.argv)[0] === 'cat-file',
+      ),
+    ).toBe(false);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('ignores ambient GIT_EXECUTABLE overrides and uses the policy-owned host Git executable', async () => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    const previousGitExecutable = process.env.GIT_EXECUTABLE;
+    const ambientGitExecutable = path.join(paths.sandbox, 'ambient-git');
+    fs.writeFileSync(
+      ambientGitExecutable,
+      '#!/bin/sh\necho ambient git must not run >&2\nexit 99\n',
+      { mode: 0o700 },
+    );
+
+    try {
+      process.env.GIT_EXECUTABLE = ambientGitExecutable;
+      const result = await materializeGitFileSet(
+        target,
+        createPolicy(paths, { trustedExecutable: '/usr/bin/git' }),
+        { approvedPaths: ['src/app.ts'], maxFiles: 10 },
+      );
+
+      expect(result.includedFiles).toEqual(['src/app.ts']);
+      expect(
+        fs.readFileSync(path.join(paths.stagingRoot, 'src', 'app.ts'), 'utf8'),
+      ).toBe('export const value = 2;\n');
+    } finally {
+      if (previousGitExecutable === undefined) {
+        delete process.env.GIT_EXECUTABLE;
+      } else {
+        process.env.GIT_EXECUTABLE = previousGitExecutable;
+      }
+    }
+  });
+
+  test('rejects invalid byte limit options before reading blob content', async () => {
+    const paths = createPaths();
+
+    for (const invalidLimits of [
+      { maxFileBytes: Number.NaN },
+      { maxFileBytes: Number.POSITIVE_INFINITY },
+      { maxFileBytes: -1 },
+      { maxFileBytes: 1.5 },
+      { maxBytes: Number.NaN },
+      { maxBytes: Number.POSITIVE_INFINITY },
+      { maxBytes: -1 },
+      { maxBytes: 1.5 },
+    ]) {
+      const git = createFakeGitRunner({
+        repositoryRoot: paths.repositoryRoot,
+        changedPaths: ['safe.txt'],
+        treeEntries: new Map<string, TreeEntry>([
+          [
+            'safe.txt',
+            { mode: '100644', objectId: 'a'.repeat(40), content: 'safe\n' },
+          ],
+        ]),
+      });
+
+      const error = await materializeGitFileSet(
+        createTarget(paths),
+        createPolicy(paths),
+        {
+          git,
+          approvedPaths: ['safe.txt'],
+          maxFiles: 10,
+          ...invalidLimits,
+        },
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(error).toMatchObject({
+        code: 'MATERIALIZATION_LIMIT_EXCEEDED',
+        diagnostics: 'invalid materialization byte limit',
+      });
+      expect(
+        git.invocations.some((invocation) =>
+          withoutGitIsolationPrefix(invocation.argv).includes('blob'),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  test('fails closed on oversized blobs using declared object size before reading blob content', async () => {
+    const paths = createPaths();
+    const objectId = 'a'.repeat(40);
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: ['large.bin'],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          'large.bin',
+          {
+            mode: '100644',
+            objectId,
+            declaredSize: 11,
+            content: '01234567890',
+          },
+        ],
+      ]),
+    });
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      {
+        git,
+        approvedPaths: ['large.bin'],
+        maxFiles: 10,
+        maxFileBytes: 10,
+      },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'MATERIALIZATION_LIMIT_EXCEEDED',
+      diagnostics: 'materialization file-byte limit exceeded',
+    });
+    expect(
+      git.invocations.some((invocation) =>
+        withoutGitIsolationPrefix(invocation.argv).includes('blob'),
+      ),
+    ).toBe(false);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+    expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
   });
 
   test('supports the planned public materializer invocation without requiring test-only seams', async () => {
     const paths = createPaths();
     const target = createRealGitTarget(paths);
 
-    const result = await materializeGitFileSet(
-      target,
-      createPolicy(paths, {
-        trustedExecutable: process.env.GIT_EXECUTABLE ?? '/usr/bin/git',
-      }),
-      {
-        approvedPaths: ['src/app.ts'],
-        maxFiles: 10,
-      },
-    );
+    const result = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    });
 
     expect(result).toEqual({
       stagingRoot: path.resolve(paths.stagingRoot),
@@ -1112,16 +1475,10 @@ describe('Graphify Git materializer file boundary', () => {
     runGit(paths.repositoryRoot, ['config', 'core.fsmonitor', fsmonitorPath]);
     runGit(paths.repositoryRoot, ['config', 'core.hooksPath', hooksPath]);
 
-    const result = await materializeGitFileSet(
-      target,
-      createPolicy(paths, {
-        trustedExecutable: process.env.GIT_EXECUTABLE ?? '/usr/bin/git',
-      }),
-      {
-        approvedPaths: ['src/app.ts'],
-        maxFiles: 10,
-      },
-    );
+    const result = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    });
 
     expect(result.includedFiles).toEqual(['src/app.ts']);
     expect(fs.existsSync(markerPath)).toBe(false);

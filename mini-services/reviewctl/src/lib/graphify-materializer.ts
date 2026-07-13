@@ -26,6 +26,7 @@ export interface MaterializationResult {
 type MaterializerErrorCode =
   | 'DIRTY_GIT_WORKTREE'
   | 'GIT_COMMAND_FAILED'
+  | 'INVALID_GIT_EXECUTABLE'
   | 'INVALID_GIT_REF'
   | 'MATERIALIZATION_LIMIT_EXCEEDED'
   | 'UNAPPROVED_CHANGED_PATH'
@@ -84,6 +85,8 @@ export interface MaterializeGitFileSetOptions {
   git?: GraphifyGitRunner;
   approvedPaths: readonly string[];
   maxFiles: number;
+  maxBytes?: number;
+  maxFileBytes?: number;
 }
 
 type TreeEntry = {
@@ -98,7 +101,7 @@ type NormalizedGitPath = {
   normalizedPath: string;
 };
 
-const hostGitExecutable = process.env.GIT_EXECUTABLE ?? '/usr/bin/git';
+const hostGitExecutable = '/usr/bin/git';
 const immutableShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const regularBlobModes = new Set(['100644', '100755']);
 const isolatedGitConfigArgv = [
@@ -171,9 +174,71 @@ function sanitizedGitError(): GraphifyMaterializerError {
   );
 }
 
+function isSameOrInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return (
+    relative === '' ||
+    (!relative.startsWith('..') && !path.isAbsolute(relative))
+  );
+}
+
+function validateHostGitExecutable(
+  policy: GraphifySafetyPolicy | undefined,
+): string {
+  if (!path.isAbsolute(hostGitExecutable)) {
+    throw new GraphifyMaterializerError(
+      'INVALID_GIT_EXECUTABLE',
+      'Git executable must be a host-owned absolute path',
+      'invalid Git executable',
+    );
+  }
+
+  let canonicalExecutable: string;
+  try {
+    canonicalExecutable = fs.realpathSync.native(hostGitExecutable);
+    const stats = fs.statSync(canonicalExecutable);
+    if (!stats.isFile() || (stats.mode & 0o111) === 0) {
+      throw new Error('not executable');
+    }
+  } catch {
+    throw new GraphifyMaterializerError(
+      'INVALID_GIT_EXECUTABLE',
+      'Git executable must resolve to the host Git allowlist entry',
+      'invalid Git executable',
+    );
+  }
+
+  if (!/git(?:\.exe)?$/u.test(path.basename(canonicalExecutable))) {
+    throw new GraphifyMaterializerError(
+      'INVALID_GIT_EXECUTABLE',
+      'Git executable must resolve to the host Git allowlist entry',
+      'invalid Git executable',
+    );
+  }
+
+  if (policy) {
+    const roots = assertSafeRoots(policy);
+    for (const root of [
+      roots.reviewedRepository,
+      roots.stagingRoot,
+      roots.runStoreRoot,
+    ]) {
+      if (isSameOrInside(root, canonicalExecutable)) {
+        throw new GraphifyMaterializerError(
+          'INVALID_GIT_EXECUTABLE',
+          'Git executable must not be controlled by the reviewed repository or writable roots',
+          'invalid Git executable',
+        );
+      }
+    }
+  }
+
+  return canonicalExecutable;
+}
+
 function defaultGitRunner(policy?: GraphifySafetyPolicy): GraphifyGitRunner {
   return {
-    executable: hostGitExecutable,
+    executable: validateHostGitExecutable(policy),
     async run(invocation) {
       try {
         const { stdout, stderr } = await execFileAsync(
@@ -295,11 +360,32 @@ export async function resolveRepositoryTarget(
   };
 }
 
+function malformedNulFraming(): GraphifyMaterializerError {
+  return new GraphifyMaterializerError(
+    'GIT_COMMAND_FAILED',
+    'Git NUL-delimited output is malformed',
+    'malformed NUL-delimited Git output',
+  );
+}
+
+function assertStrictNulFraming(output: Buffer): void {
+  if (output.length > 0 && output.at(-1) !== 0) {
+    throw malformedNulFraming();
+  }
+}
+
 function parseNulPaths(output: Buffer): string[] {
-  return output
-    .toString('utf8')
-    .split('\0')
-    .filter((entry) => entry.length > 0);
+  assertStrictNulFraming(output);
+  if (output.length === 0) {
+    return [];
+  }
+
+  const frames = output.toString('utf8').split('\0');
+  const records = frames.slice(0, -1);
+  if (records.some((entry) => entry.length === 0)) {
+    throw malformedNulFraming();
+  }
+  return records;
 }
 
 function normalizeGitPath(filePath: string): string {
@@ -380,6 +466,30 @@ function assertApprovedPaths(
   );
 }
 
+function invalidByteLimit(): GraphifyMaterializerError {
+  return new GraphifyMaterializerError(
+    'MATERIALIZATION_LIMIT_EXCEEDED',
+    'Materialization byte limits must be non-negative safe integers',
+    'invalid materialization byte limit',
+  );
+}
+
+function assertValidOptionalByteLimit(value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw invalidByteLimit();
+  }
+}
+
+function assertValidMaterializationLimits(
+  options: MaterializeGitFileSetOptions,
+): void {
+  assertValidOptionalByteLimit(options.maxFileBytes);
+  assertValidOptionalByteLimit(options.maxBytes);
+}
+
 function assertFileLimit(
   changedPaths: readonly NormalizedGitPath[],
   maxFiles: number,
@@ -398,22 +508,6 @@ function assertFileLimit(
 function cleanStagingRoot(stagingRoot: string): void {
   fs.rmSync(stagingRoot, { force: true, recursive: true });
   fs.mkdirSync(stagingRoot, { recursive: true, mode: 0o700 });
-}
-
-function cleanupRejectedEmptyStagingRoot(policy: GraphifySafetyPolicy): void {
-  if (!path.isAbsolute(policy.stagingRoot)) {
-    return;
-  }
-
-  try {
-    const stagingRoot = path.resolve(policy.stagingRoot);
-    const stats = fs.lstatSync(stagingRoot);
-    if (stats.isDirectory() && fs.readdirSync(stagingRoot).length === 0) {
-      fs.rmdirSync(stagingRoot);
-    }
-  } catch {
-    // Best-effort restoration for a rejected caller-provided staging root.
-  }
 }
 
 function dirtyGitWorktree(): GraphifyMaterializerError {
@@ -466,10 +560,17 @@ function parseTreeEntry(
   output: Buffer,
   requestedPath: string,
 ): TreeEntry | undefined {
-  const text = output.toString('utf8').replace(/\0$/u, '');
-  if (text.length === 0) {
+  assertStrictNulFraming(output);
+  if (output.length === 0) {
     return undefined;
   }
+
+  const frames = output.toString('utf8').split('\0');
+  const records = frames.slice(0, -1);
+  if (records.length !== 1 || records[0]?.length === 0) {
+    throw malformedNulFraming();
+  }
+  const text = records[0];
 
   const tabIndex = text.indexOf('\t');
   if (tabIndex === -1) {
@@ -494,11 +595,7 @@ function parseTreeEntry(
 }
 
 function isInsideRoot(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return (
-    relative === '' ||
-    (!relative.startsWith('..') && !path.isAbsolute(relative))
-  );
+  return isSameOrInside(root, candidate);
 }
 
 function destinationFor(stagingRoot: string, filePath: string): string {
@@ -511,6 +608,52 @@ function destinationFor(stagingRoot: string, filePath: string): string {
     );
   }
   return destination;
+}
+
+function parseObjectSize(output: Buffer): number {
+  const text = output.toString('utf8').trim();
+  if (!/^\d+$/u.test(text)) {
+    throw new GraphifyMaterializerError(
+      'GIT_COMMAND_FAILED',
+      'Git object size output is malformed',
+      'malformed Git object size',
+    );
+  }
+  const size = Number(text);
+  if (!Number.isSafeInteger(size)) {
+    throw new GraphifyMaterializerError(
+      'MATERIALIZATION_LIMIT_EXCEEDED',
+      'Git object size exceeds the materialization byte limit',
+      'materialization file-byte limit exceeded',
+    );
+  }
+  return size;
+}
+
+function fileByteLimitExceeded(): GraphifyMaterializerError {
+  return new GraphifyMaterializerError(
+    'MATERIALIZATION_LIMIT_EXCEEDED',
+    'Git object exceeds the materialization byte limit',
+    'materialization file-byte limit exceeded',
+  );
+}
+
+function totalByteLimitExceeded(): GraphifyMaterializerError {
+  return new GraphifyMaterializerError(
+    'MATERIALIZATION_LIMIT_EXCEEDED',
+    'Git file set exceeds the materialization byte limit',
+    'materialization total-byte limit exceeded',
+  );
+}
+
+async function readObjectSize(
+  git: GraphifyGitRunner,
+  repositoryRoot: string,
+  objectId: string,
+): Promise<number> {
+  return parseObjectSize(
+    await runGit(git, repositoryRoot, ['cat-file', '-s', objectId]),
+  );
 }
 
 function writeBlobAtomically(
@@ -553,20 +696,15 @@ export async function materializeGitFileSet(
   assertImmutableSha(target.baseSha);
   assertImmutableSha(target.headSha);
   assertImmutableSha(target.mergeBaseSha);
-  let executionRepositoryRoot: string;
-  try {
-    const safeRoots = assertSafeRoots(policy);
-    assertTargetRepositoryMatchesPolicy(
-      target.repositoryRoot,
-      safeRoots.reviewedRepository,
-    );
-    executionRepositoryRoot = options.git
-      ? target.repositoryRoot
-      : safeRoots.reviewedRepository;
-  } catch (error) {
-    cleanupRejectedEmptyStagingRoot(policy);
-    throw error;
-  }
+  const safeRoots = assertSafeRoots(policy);
+  assertTargetRepositoryMatchesPolicy(
+    target.repositoryRoot,
+    safeRoots.reviewedRepository,
+  );
+  const executionRepositoryRoot = options.git
+    ? target.repositoryRoot
+    : safeRoots.reviewedRepository;
+  assertValidMaterializationLimits(options);
   const stagingRoot = path.resolve(policy.stagingRoot);
   const usesDefaultGitRunner = !options.git;
   const git = options.git ?? defaultGitRunner(policy);
@@ -598,6 +736,7 @@ export async function materializeGitFileSet(
 
     const includedFiles: string[] = [];
     const skippedFiles: { path: string; reason: string }[] = [];
+    let materializedBytes = 0;
 
     for (const { rawPath, normalizedPath } of changedPaths) {
       const unsafeReason = pathSkipReason(normalizedPath);
@@ -630,12 +769,38 @@ export async function materializeGitFileSet(
         continue;
       }
 
+      const objectSize = await readObjectSize(
+        git,
+        executionRepositoryRoot,
+        treeEntry.objectId,
+      );
+      if (
+        options.maxFileBytes !== undefined &&
+        objectSize > options.maxFileBytes
+      ) {
+        throw fileByteLimitExceeded();
+      }
+      if (
+        options.maxBytes !== undefined &&
+        materializedBytes + objectSize > options.maxBytes
+      ) {
+        throw totalByteLimitExceeded();
+      }
+
       const blob = await runGit(git, executionRepositoryRoot, [
         'cat-file',
         'blob',
         treeEntry.objectId,
       ]);
+      if (blob.byteLength !== objectSize) {
+        throw new GraphifyMaterializerError(
+          'GIT_COMMAND_FAILED',
+          'Git blob size changed during materialization',
+          'unstable Git blob size',
+        );
+      }
       writeBlobAtomically(stagingRoot, normalizedPath, blob);
+      materializedBytes += objectSize;
       includedFiles.push(normalizedPath);
     }
 
