@@ -147,6 +147,33 @@ describe('Graphify safety boundary', () => {
     ).toThrow(/same|equal|overlap|distinct|realpath/i);
   });
 
+  test('rejects a dangling symlink root instead of treating it as not yet created', () => {
+    const paths = createSafetyPaths();
+    const danglingTarget = path.join(paths.sandbox, 'missing-target');
+    const danglingRoot = path.join(paths.sandbox, 'dangling-run-store');
+    fs.symlinkSync(danglingTarget, danglingRoot, 'dir');
+
+    const error = (() => {
+      try {
+        assertSafeRoots(createPolicy(paths, { runStoreRoot: danglingRoot }));
+        return undefined;
+      } catch (caughtError) {
+        return caughtError;
+      }
+    })();
+
+    const diagnostics = (error as { diagnostics: string }).diagnostics;
+
+    expect(error).toMatchObject({
+      code: 'INVALID_ROOT',
+    });
+    expect(typeof diagnostics).toBe('string');
+    expect((error as Error).message.includes(danglingRoot)).toBe(false);
+    expect(diagnostics.includes(danglingRoot)).toBe(false);
+    expect((error as Error).message.includes(danglingTarget)).toBe(false);
+    expect(diagnostics.includes(danglingTarget)).toBe(false);
+  });
+
   test('accepts two distinct absolute realpaths', () => {
     const paths = createSafetyPaths();
 
@@ -380,6 +407,38 @@ describe('Graphify trusted execution contract', () => {
       'CUSTOM_CONFIG',
       'CUSTOM_CONFIG_FILE',
       'CUSTOM_SOCKET_PATH',
+    ];
+    const sourceEnvironment = Object.fromEntries([
+      ['PATH', '/usr/bin'],
+      ['LANG', 'C'],
+      ...genericSelectors.map((key) => [key, `selector-value-for-${key}`]),
+    ]);
+
+    const environment = createMinimalEnvironment(sourceEnvironment, [
+      'PATH',
+      'LANG',
+      ...genericSelectors,
+    ]);
+
+    expect(environment).toEqual({ PATH: '/usr/bin', LANG: 'C' });
+    for (const key of genericSelectors) {
+      expect(environment).not.toHaveProperty(key);
+    }
+  });
+
+  test('hard-denies generic provider cloud review and GitHub selectors even when explicitly allowlisted', () => {
+    const genericSelectors = [
+      'CUSTOM_PROVIDER',
+      'CUSTOM_PROVIDER_FILE',
+      'CUSTOM_CLOUD',
+      'CUSTOM_CLOUD_FILE',
+      'REVIEW_PROVIDER',
+      'REVIEW_PROVIDER_FILE',
+      'REVIEW_CLOUD',
+      'REVIEW_CLOUD_FILE',
+      'GITHUB_APP_ID',
+      'GITHUB_APP_PRIVATE_KEY',
+      'CUSTOM_GITHUB_APP_ID',
     ];
     const sourceEnvironment = Object.fromEntries([
       ['PATH', '/usr/bin'],

@@ -108,10 +108,15 @@ const blockedEnvironmentKeyNames = new Set([
 ]);
 
 const blockedEnvironmentKeyPatterns = [
-  /(^|_)(CONFIG|AUTH|AUTHORITY|CREDENTIALS?|PROFILE|CERT|CERTIFICATE|PASS|PASSWORD|SSH|AGENT|SOCKET|KEY|TOKEN|SECRET)(_|$)/u,
+  /(^|_)(CONFIG|AUTH|AUTHORITY|CREDENTIALS?|PROFILE|PROVIDER|CLOUD|REVIEW|GITHUB|APP|CERT|CERTIFICATE|PASS|PASSWORD|SSH|AGENT|SOCKET|KEY|TOKEN|SECRET)(_|$)/u,
   /(^|_)TOKEN$/u,
   /(^|_)SECRET$/u,
   /(^|_)KEY$/u,
+  /(^|_)PROVIDER(_FILE)?$/u,
+  /(^|_)CLOUD(_FILE)?$/u,
+  /(^|_)REVIEW(_PROVIDER|_CLOUD)?(_FILE)?$/u,
+  /(^|_)GITHUB(_APP(_ID|_PRIVATE_KEY)?)?$/u,
+  /(^|_)APP(_ID|_PRIVATE_KEY|_KEY|_SECRET)?$/u,
   /(^|_)API_KEY$/u,
   /(^|_)ACCESS_KEY_ID$/u,
   /(^|_)SECRET_ACCESS_KEY$/u,
@@ -125,6 +130,7 @@ const blockedEnvironmentKeyPatterns = [
   /^AWS_/u,
   /^AZURE_/u,
   /^GOOGLE_/u,
+  /^GITHUB_/u,
   /^CLOUDSDK_/u,
   /^GIT_/u,
   /^NPM_CONFIG_/u,
@@ -223,6 +229,49 @@ function assertDirectoryIfExists(label: string, value: string): void {
   }
 }
 
+function assertNoDanglingSymlinkComponents(label: string, value: string): void {
+  const resolved = path.resolve(value);
+  const parsed = path.parse(resolved);
+  const parts = resolved
+    .slice(parsed.root.length)
+    .split(path.sep)
+    .filter(Boolean);
+  let current = parsed.root;
+
+  for (const part of parts) {
+    current = path.join(current, part);
+
+    let stats: fs.Stats;
+    try {
+      stats = fs.lstatSync(current);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        return;
+      }
+      throw sanitizedFilesystemError(
+        'INVALID_ROOT',
+        label,
+        'must have resolvable path components',
+      );
+    }
+
+    if (!stats.isSymbolicLink()) {
+      continue;
+    }
+
+    try {
+      fs.realpathSync.native(current);
+    } catch {
+      throw sanitizedFilesystemError(
+        'INVALID_ROOT',
+        label,
+        'must not contain dangling symlink components',
+      );
+    }
+  }
+}
+
 function nearestExistingAncestor(
   label: string,
   value: string,
@@ -254,6 +303,7 @@ function nearestExistingAncestor(
 
 function canonicalDirectory(label: string, value: string): string {
   assertAbsolutePath(label, value);
+  assertNoDanglingSymlinkComponents(label, value);
   assertDirectoryIfExists(label, value);
 
   const { ancestor, missing } = nearestExistingAncestor(label, value);
