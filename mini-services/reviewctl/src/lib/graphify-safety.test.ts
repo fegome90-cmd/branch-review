@@ -59,6 +59,10 @@ function nodeArgv(script: string, args: readonly string[] = []): string[] {
   return ['-e', script, ...args];
 }
 
+function canonicalPath(filePath: string): string {
+  return fs.realpathSync.native(filePath);
+}
+
 afterEach(() => {
   while (createdDirectories.length > 0) {
     const directory = createdDirectories.pop();
@@ -231,8 +235,12 @@ describe('Graphify trusted execution contract', () => {
       nodeArgv('process.stdout.write(process.cwd())'),
     );
 
-    expect(result.stdout).toBe(paths.stagingRoot);
-    expect(result.stdout).not.toBe(paths.reviewedRepository);
+    expect(canonicalPath(result.stdout)).toBe(
+      canonicalPath(paths.stagingRoot),
+    );
+    expect(canonicalPath(result.stdout)).not.toBe(
+      canonicalPath(paths.reviewedRepository),
+    );
   });
 
   test('passes only the minimal allowlisted environment to the child', async () => {
@@ -333,14 +341,15 @@ describe('Graphify trusted execution contract', () => {
 
   test('terminates the process group on timeout and returns sanitized diagnostics', async () => {
     const paths = createSafetyPaths();
+    const startedChildMarker = path.join(paths.sandbox, 'started-child');
     const survivingChildMarker = path.join(paths.sandbox, 'surviving-child');
     const secret = 'must-not-appear-in-diagnostics';
     const previousToken = process.env.REVIEW_API_TOKEN;
     process.env.REVIEW_API_TOKEN = secret;
 
     try {
-      const childScript = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(survivingChildMarker)}, 'survived'), 300)`;
-      const parentScript = `const { spawn } = require('node:child_process'); spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { stdio: 'ignore' }); setTimeout(() => {}, 60_000)`;
+      const childScript = `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(startedChildMarker)}, 'started'); setTimeout(() => fs.writeFileSync(${JSON.stringify(survivingChildMarker)}, 'survived'), 300); setTimeout(() => {}, 60_000)`;
+      const parentScript = `const { spawn } = require('node:child_process'); const fs = require('node:fs'); spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { stdio: 'ignore' }); while (!fs.existsSync(${JSON.stringify(startedChildMarker)})) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); } setTimeout(() => {}, 60_000)`;
       const error = await runTrustedProcess(
         createPolicy(paths, { timeoutMs: 50 }),
         nodeArgv(parentScript),
@@ -354,6 +363,7 @@ describe('Graphify trusted execution contract', () => {
         secret,
       );
       expect(JSON.stringify(error)).not.toContain(secret);
+      expect(fs.existsSync(startedChildMarker)).toBe(true);
       await new Promise((resolve) => setTimeout(resolve, 400));
       expect(fs.existsSync(survivingChildMarker)).toBe(false);
     } finally {
