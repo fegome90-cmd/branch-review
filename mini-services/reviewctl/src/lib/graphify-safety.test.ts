@@ -295,8 +295,16 @@ describe('Graphify trusted execution contract', () => {
       .catch((caughtError: unknown) => caughtError);
 
     expect(terminatedPid).toBe(4202);
-    expect(error).toMatchObject({ code: 'TIMEOUT' });
-    expect(String(error)).not.toContain('must-not-appear-in-diagnostics');
+    expect(error).toMatchObject({
+      code: 'TIMEOUT',
+      diagnostics: expect.any(String),
+    });
+    expect((error as { diagnostics: string }).diagnostics).not.toContain(
+      'must-not-appear-in-diagnostics',
+    );
+    expect(JSON.stringify(error)).not.toContain(
+      'must-not-appear-in-diagnostics',
+    );
   });
 
   test('fails closed when network isolation is unavailable', async () => {
