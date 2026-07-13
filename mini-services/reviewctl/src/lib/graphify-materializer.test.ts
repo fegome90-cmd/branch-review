@@ -36,11 +36,23 @@ type TreeEntry = {
   content?: string;
 };
 
+type SourceManifestEntry = {
+  type: 'file' | 'directory' | 'symlink';
+  relativePath: string;
+  mode: number;
+  size: number;
+  target?: string;
+  content?: string;
+};
+
 const createdDirectories: string[] = [];
 const fullSha = {
   base: '1111111111111111111111111111111111111111',
   head: '2222222222222222222222222222222222222222',
   mergeBase: '3333333333333333333333333333333333333333',
+  sha256Base: 'a'.repeat(64),
+  sha256Head: 'b'.repeat(64),
+  sha256MergeBase: 'c'.repeat(64),
 };
 
 function createPaths(): MaterializerTestPaths {
@@ -55,9 +67,18 @@ function createPaths(): MaterializerTestPaths {
   fs.mkdirSync(repositoryRoot);
   fs.mkdirSync(runStoreRoot);
   fs.mkdirSync(stagingRoot);
+  fs.mkdirSync(path.join(repositoryRoot, 'src'));
   fs.writeFileSync(
     path.join(repositoryRoot, 'tracked-source.txt'),
     'source repository must stay read-only\n',
+  );
+  fs.writeFileSync(
+    path.join(repositoryRoot, 'src', 'tracked-nested.txt'),
+    'nested source must stay read-only\n',
+  );
+  fs.symlinkSync(
+    'tracked-source.txt',
+    path.join(repositoryRoot, 'source-link'),
   );
 
   return { sandbox, repositoryRoot, runStoreRoot, stagingRoot };
@@ -93,7 +114,108 @@ function createTarget(paths: MaterializerTestPaths): RepositoryTarget {
   };
 }
 
+function captureSourceManifest(root: string): SourceManifestEntry[] {
+  const entries: SourceManifestEntry[] = [];
+
+  function visit(absolutePath: string, relativePath: string): void {
+    const stats = fs.lstatSync(absolutePath);
+    const base = {
+      relativePath,
+      mode: stats.mode,
+      size: stats.size,
+    };
+
+    if (stats.isSymbolicLink()) {
+      entries.push({
+        ...base,
+        type: 'symlink',
+        target: fs.readlinkSync(absolutePath),
+      });
+      return;
+    }
+
+    if (stats.isDirectory()) {
+      entries.push({ ...base, type: 'directory' });
+      for (const child of fs.readdirSync(absolutePath).sort()) {
+        visit(path.join(absolutePath, child), path.join(relativePath, child));
+      }
+      return;
+    }
+
+    if (stats.isFile()) {
+      entries.push({
+        ...base,
+        type: 'file',
+        content: fs.readFileSync(absolutePath, 'utf8'),
+      });
+      return;
+    }
+
+    throw new Error(`unexpected source manifest entry: ${relativePath}`);
+  }
+
+  for (const child of fs.readdirSync(root).sort()) {
+    visit(path.join(root, child), child);
+  }
+
+  return entries.sort((left, right) =>
+    left.relativePath.localeCompare(right.relativePath),
+  );
+}
+
+function expectSourceManifestUnchanged(
+  paths: MaterializerTestPaths,
+  before: SourceManifestEntry[],
+): void {
+  expect(captureSourceManifest(paths.repositoryRoot)).toEqual(before);
+  expect(fs.existsSync(path.join(paths.repositoryRoot, '.git'))).toBe(false);
+  expect(fs.existsSync(path.join(paths.repositoryRoot, '.tmp'))).toBe(false);
+  expect(fs.existsSync(path.join(paths.repositoryRoot, '.graphify'))).toBe(
+    false,
+  );
+  expect(fs.existsSync(path.join(paths.repositoryRoot, 'tmp'))).toBe(false);
+}
+
+function assertCanonicalGitInvocation(
+  invocation: GitInvocation,
+  expectedArgv: readonly string[],
+  repositoryRoot: string,
+  executable: string,
+): void {
+  expect(invocation).toMatchObject({
+    executable,
+    cwd: repositoryRoot,
+    shell: false,
+  });
+  expect(invocation.argv).toEqual(expectedArgv);
+  expect(invocation.env).toEqual({ LANG: 'C', PATH: '/usr/bin:/bin' });
+  expect(invocation.cwd).not.toContain('.git/hooks');
+  expect(invocation.argv).not.toContain('-c');
+  expect(invocation.argv).not.toContain('--config');
+  expect(invocation.argv).not.toContain('checkout');
+  expect(invocation.argv).not.toContain('fetch');
+  expect(invocation.argv).not.toContain('reset');
+  expect(invocation.argv).not.toContain('clean');
+  expect(invocation.argv).not.toContain('worktree');
+  expect(invocation.argv).not.toContain('clone');
+  expect(invocation.argv).not.toContain('pull');
+  expect(invocation.argv).not.toContain('push');
+
+  const command = invocation.argv[0];
+  if (command === 'diff') {
+    expect(invocation.argv.at(-1)).toBe('--');
+  }
+  if (command === 'ls-tree') {
+    expect(invocation.argv.at(-2)).toBe('--');
+    expect(invocation.argv.at(-1)).not.toBe('');
+  }
+  if (command === 'cat-file') {
+    expect(invocation.argv).toHaveLength(3);
+  }
+}
+
 function createFakeGitRunner(options: {
+  repositoryRoot: string;
   changedPaths?: readonly string[];
   treeEntries?: ReadonlyMap<string, TreeEntry>;
   commitResolutions?: ReadonlyMap<string, string>;
@@ -105,35 +227,72 @@ function createFakeGitRunner(options: {
     new Map<string, string>([
       [fullSha.base, fullSha.base],
       [fullSha.head, fullSha.head],
+      [fullSha.sha256Base, fullSha.sha256Base],
+      [fullSha.sha256Head, fullSha.sha256Head],
       ['merge-base', fullSha.mergeBase],
+      ['sha256-merge-base', fullSha.sha256MergeBase],
     ]);
+  const expectedInvocations: readonly string[][] = [
+    ['rev-parse', '--verify', '--end-of-options', `${fullSha.base}^{commit}`],
+    ['rev-parse', '--verify', '--end-of-options', `${fullSha.head}^{commit}`],
+    [
+      'rev-parse',
+      '--verify',
+      '--end-of-options',
+      `${fullSha.sha256Base}^{commit}`,
+    ],
+    [
+      'rev-parse',
+      '--verify',
+      '--end-of-options',
+      `${fullSha.sha256Head}^{commit}`,
+    ],
+    ['merge-base', fullSha.base, fullSha.head],
+    ['merge-base', fullSha.sha256Base, fullSha.sha256Head],
+    [
+      'diff',
+      '--name-only',
+      '-z',
+      '--no-ext-diff',
+      '--no-textconv',
+      fullSha.base,
+      fullSha.head,
+      '--',
+    ],
+    ...[...treeEntries.keys()].flatMap((filePath) => {
+      const entry = treeEntries.get(filePath);
+      return [
+        ['ls-tree', '-z', '--full-tree', fullSha.head, '--', filePath],
+        ['cat-file', 'blob', entry?.objectId ?? ''],
+      ];
+    }),
+  ];
 
   const runner: FakeGitRunner = {
     executable: '/usr/bin/git',
     invocations: [],
     async run(invocation) {
-      runner.invocations.push({
+      const copiedInvocation = {
         ...invocation,
         argv: [...invocation.argv],
         env: { ...invocation.env },
-      });
+      };
+      runner.invocations.push(copiedInvocation);
+
+      expect(
+        expectedInvocations.some(
+          (expected) =>
+            JSON.stringify(expected) === JSON.stringify(invocation.argv),
+        ),
+      ).toBe(true);
+      assertCanonicalGitInvocation(
+        copiedInvocation,
+        copiedInvocation.argv,
+        options.repositoryRoot,
+        runner.executable,
+      );
 
       const argv = [...invocation.argv];
-      expect(invocation.executable).toBe(runner.executable);
-      expect(Array.isArray(argv)).toBe(true);
-      expect(invocation.shell).toBe(false);
-      expect(invocation.cwd).not.toContain('.git/hooks');
-      expect(invocation.env).toEqual({ LANG: 'C', PATH: '/usr/bin:/bin' });
-
-      if (argv.includes('checkout') || argv.includes('fetch')) {
-        throw new Error(`mutating git command reached fake runner: ${argv}`);
-      }
-      if (argv.includes('-c') || argv.includes('--config')) {
-        throw new Error(
-          `repository-controlled git config reached runner: ${argv}`,
-        );
-      }
-
       if (
         argv[0] === 'rev-parse' &&
         argv[1] === '--verify' &&
@@ -148,44 +307,36 @@ function createFakeGitRunner(options: {
       }
 
       if (argv[0] === 'merge-base') {
+        const sha =
+          argv[1] === fullSha.sha256Base
+            ? commitResolutions.get('sha256-merge-base')
+            : commitResolutions.get('merge-base');
+        return { stdout: Buffer.from(`${sha}\n`), stderr: Buffer.alloc(0) };
+      }
+
+      if (argv[0] === 'diff') {
         return {
-          stdout: Buffer.from(`${commitResolutions.get('merge-base')}\n`),
+          stdout: Buffer.from(`${changedPaths.join(' ')} `),
           stderr: Buffer.alloc(0),
         };
       }
 
-      if (
-        argv[0] === 'diff' &&
-        argv.includes('--name-only') &&
-        argv.includes('-z') &&
-        argv.includes('--no-ext-diff') &&
-        argv.includes('--no-textconv')
-      ) {
-        return {
-          stdout: Buffer.from(`${changedPaths.join('\0')}\0`),
-          stderr: Buffer.alloc(0),
-        };
-      }
-
-      if (
-        argv[0] === 'ls-tree' &&
-        argv.includes('-z') &&
-        argv.includes('--full-tree')
-      ) {
-        const requestedPath = argv.at(-1) ?? '';
+      if (argv[0] === 'ls-tree') {
+        const separatorIndex = argv.lastIndexOf('--');
+        const requestedPath = argv[separatorIndex + 1] ?? '';
         const entry = treeEntries.get(requestedPath);
         if (!entry) {
           return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
         }
         return {
           stdout: Buffer.from(
-            `${entry.mode} blob ${entry.objectId}\t${requestedPath}\0`,
+            `${entry.mode} blob ${entry.objectId}	${requestedPath} `,
           ),
           stderr: Buffer.alloc(0),
         };
       }
 
-      if (argv[0] === 'cat-file' && argv[1] === 'blob') {
+      if (argv[0] === 'cat-file') {
         const objectId = argv[2] ?? '';
         const entry = [...treeEntries.values()].find(
           (candidate) => candidate.objectId === objectId,
@@ -203,16 +354,6 @@ function createFakeGitRunner(options: {
   return runner;
 }
 
-function assertNoRepositoryMutation(paths: MaterializerTestPaths): void {
-  expect(
-    fs.readFileSync(
-      path.join(paths.repositoryRoot, 'tracked-source.txt'),
-      'utf8',
-    ),
-  ).toBe('source repository must stay read-only\n');
-  expect(fs.existsSync(path.join(paths.repositoryRoot, '.git'))).toBe(false);
-}
-
 afterEach(() => {
   while (createdDirectories.length > 0) {
     const directory = createdDirectories.pop();
@@ -225,7 +366,7 @@ afterEach(() => {
 describe('Graphify Git materializer target resolution', () => {
   test('resolves only pinned full commit identities and merge-base through argv-based read-only Git', async () => {
     const paths = createPaths();
-    const git = createFakeGitRunner({});
+    const git = createFakeGitRunner({ repositoryRoot: paths.repositoryRoot });
 
     const target = await resolveRepositoryTarget(
       paths.repositoryRoot,
@@ -247,11 +388,54 @@ describe('Graphify Git materializer target resolution', () => {
     ]);
   });
 
-  test('rejects branch tag ref path and option injection before invoking Git', async () => {
+  test('accepts sha256 repositories only when pins are exactly 64 hexadecimal characters', async () => {
+    const paths = createPaths();
+    const git = createFakeGitRunner({ repositoryRoot: paths.repositoryRoot });
+
+    const target = await resolveRepositoryTarget(
+      paths.repositoryRoot,
+      fullSha.sha256Base,
+      fullSha.sha256Head,
+      { git, policy: createPolicy(paths) },
+    );
+
+    expect(target).toEqual({
+      repositoryRoot: paths.repositoryRoot,
+      baseSha: fullSha.sha256Base,
+      headSha: fullSha.sha256Head,
+      mergeBaseSha: fullSha.sha256MergeBase,
+    });
+    expect(git.invocations.map((invocation) => invocation.argv)).toEqual([
+      [
+        'rev-parse',
+        '--verify',
+        '--end-of-options',
+        `${fullSha.sha256Base}^{commit}`,
+      ],
+      [
+        'rev-parse',
+        '--verify',
+        '--end-of-options',
+        `${fullSha.sha256Head}^{commit}`,
+      ],
+      ['merge-base', fullSha.sha256Base, fullSha.sha256Head],
+    ]);
+  });
+
+  test('rejects every non-immutable or malformed commit pin before invoking Git', async () => {
     const paths = createPaths();
     const unsafeRefs = [
+      '',
+      ' ',
+      fullSha.base.slice(0, 7),
+      fullSha.base.slice(0, 39),
+      `${fullSha.base}0`,
+      'g'.repeat(40),
+      'z'.repeat(64),
       'main',
+      'HEAD',
       'refs/tags/v1.0.0',
+      'refs/heads/main',
       'feature/branch',
       '../HEAD',
       '/absolute/ref',
@@ -263,7 +447,7 @@ describe('Graphify Git materializer target resolution', () => {
     ];
 
     for (const unsafeRef of unsafeRefs) {
-      const git = createFakeGitRunner({});
+      const git = createFakeGitRunner({ repositoryRoot: paths.repositoryRoot });
       const error = await resolveRepositoryTarget(
         paths.repositoryRoot,
         unsafeRef,
@@ -280,11 +464,48 @@ describe('Graphify Git materializer target resolution', () => {
       expect(JSON.stringify(error)).not.toContain(paths.stagingRoot);
     }
   });
+
+  test('rejects malformed resolved commit output from Git instead of trusting it', async () => {
+    const paths = createPaths();
+    const malformedResolvedOutputs = [
+      fullSha.base.slice(0, 39),
+      `${fullSha.base}0`,
+      'g'.repeat(40),
+      'refs/heads/main',
+      `${fullSha.base}\n${fullSha.head}`,
+      '',
+    ];
+
+    for (const malformedOutput of malformedResolvedOutputs) {
+      const git = createFakeGitRunner({
+        repositoryRoot: paths.repositoryRoot,
+        commitResolutions: new Map<string, string>([
+          [fullSha.base, malformedOutput],
+          [fullSha.head, fullSha.head],
+          ['merge-base', fullSha.mergeBase],
+        ]),
+      });
+
+      const error = await resolveRepositoryTarget(
+        paths.repositoryRoot,
+        fullSha.base,
+        fullSha.head,
+        { git, policy: createPolicy(paths) },
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(error).toMatchObject({
+        code: 'INVALID_GIT_REF',
+        diagnostics: expect.any(String),
+      });
+      expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+    }
+  });
 });
 
 describe('Graphify Git materializer file boundary', () => {
   test('materializes only approved regular Git blobs into the safe staging root without mutating the source repository', async () => {
     const paths = createPaths();
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
     const treeEntries = new Map<string, TreeEntry>([
       [
         'safe file.txt',
@@ -322,6 +543,7 @@ describe('Graphify Git materializer file boundary', () => {
       ['special/fifo', { mode: '100664', objectId: '4'.repeat(40) }],
     ]);
     const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
       changedPaths: [...treeEntries.keys()],
       treeEntries,
     });
@@ -385,12 +607,66 @@ describe('Graphify Git materializer file boundary', () => {
       ),
     ).toBe('dash\n');
     expect(fs.existsSync(path.join(paths.sandbox, 'escape.txt'))).toBe(false);
-    assertNoRepositoryMutation(paths);
+    expectSourceManifestUnchanged(paths, sourceManifestBefore);
+    expect(git.invocations.map((invocation) => invocation.argv)).toEqual([
+      [
+        'diff',
+        '--name-only',
+        '-z',
+        '--no-ext-diff',
+        '--no-textconv',
+        fullSha.base,
+        fullSha.head,
+        '--',
+      ],
+      ...[...treeEntries.keys()].flatMap((filePath) => [
+        ['ls-tree', '-z', '--full-tree', fullSha.head, '--', filePath],
+        ['cat-file', 'blob', treeEntries.get(filePath)?.objectId ?? ''],
+      ]),
+    ]);
+  });
+
+  test('fails closed when Git reports a changed path outside the approved path set', async () => {
+    const paths = createPaths();
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
+    const approvedFixturePath = 'approved/safe.ts';
+    const unapprovedFixturePath = 'unapproved/secret.ts';
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: [approvedFixturePath, unapprovedFixturePath],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          approvedFixturePath,
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'safe\n' },
+        ],
+        [
+          unapprovedFixturePath,
+          { mode: '100644', objectId: 'b'.repeat(40), content: 'secret\n' },
+        ],
+      ]),
+    });
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: [approvedFixturePath], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'UNAPPROVED_CHANGED_PATH',
+      diagnostics: expect.any(String),
+    });
+    expect(JSON.stringify(error)).toContain(unapprovedFixturePath);
+    expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+    expectSourceManifestUnchanged(paths, sourceManifestBefore);
   });
 
   test('fails closed when the changed file set exceeds the configured materialization limit', async () => {
     const paths = createPaths();
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
     const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
       changedPaths: ['one.txt', 'two.txt', 'three.txt'],
       treeEntries: new Map<string, TreeEntry>([
         [
@@ -424,11 +700,12 @@ describe('Graphify Git materializer file boundary', () => {
     });
     expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
     expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
-    assertNoRepositoryMutation(paths);
+    expectSourceManifestUnchanged(paths, sourceManifestBefore);
   });
 
   test('cleans stale staging contents before producing a deterministic isolated checkout for the same pinned target', async () => {
     const paths = createPaths();
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
     const treeEntries = new Map<string, TreeEntry>([
       [
         'src/index.ts',
@@ -436,6 +713,7 @@ describe('Graphify Git materializer file boundary', () => {
       ],
     ]);
     const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
       changedPaths: ['src/index.ts'],
       treeEntries,
     });
@@ -473,17 +751,19 @@ describe('Graphify Git materializer file boundary', () => {
     expect(
       fs.readFileSync(path.join(paths.stagingRoot, 'src', 'index.ts'), 'utf8'),
     ).toBe('export {}\n');
-    assertNoRepositoryMutation(paths);
+    expectSourceManifestUnchanged(paths, sourceManifestBefore);
   });
 
   test('rejects unsafe staging roots through assertSafeRoots before any Git command runs', async () => {
     const paths = createPaths();
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
     const unsafeStagingRoot = path.join(
       paths.repositoryRoot,
       'controlled-staging',
     );
     fs.mkdirSync(unsafeStagingRoot);
     const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
       changedPaths: ['safe.txt'],
       treeEntries: new Map<string, TreeEntry>([
         [
@@ -503,6 +783,18 @@ describe('Graphify Git materializer file boundary', () => {
       code: 'INVALID_ROOT',
     });
     expect(git.invocations).toHaveLength(0);
-    assertNoRepositoryMutation(paths);
+    expectSourceManifestUnchanged(paths, sourceManifestBefore);
+  });
+
+  test('supports the planned public materializer invocation without requiring test-only seams', async () => {
+    const paths = createPaths();
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
+
+    await materializeGitFileSet(createTarget(paths), createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    });
+
+    expectSourceManifestUnchanged(paths, sourceManifestBefore);
   });
 });
