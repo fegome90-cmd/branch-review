@@ -39,6 +39,7 @@ type TreeEntry = {
 };
 
 const isolatedGitArgvPrefix = [
+  '--no-lazy-fetch',
   '-c',
   'core.fsmonitor=false',
   '-c',
@@ -1825,6 +1826,120 @@ describe('Graphify Git materializer file boundary', () => {
       diagnostics: expect.any(String),
     });
     expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test.each([
+    ['true'],
+    ['yes'],
+    ['on'],
+    ['1'],
+  ])('rejects repositories that declare a promisor remote via promisor=%s', async (truthyValue: string) => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    runGit(paths.repositoryRoot, [
+      'remote',
+      'add',
+      'cache',
+      'https://example.invalid/cache',
+    ]);
+    runGit(paths.repositoryRoot, [
+      'config',
+      '--local',
+      'remote.cache.promisor',
+      truthyValue,
+    ]);
+
+    const error = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    }).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'PARTIAL_CLONE_REJECTED',
+      diagnostics: expect.any(String),
+    });
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('rejects repositories that declare a promisor remote via a bare valueless key', async () => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    runGit(paths.repositoryRoot, [
+      'remote',
+      'add',
+      'cache',
+      'https://example.invalid/cache',
+    ]);
+    // `git config --local <key>` with no value argument exits 1 and writes
+    // nothing, so set the bare key by appending to the local config file.
+    // git-config treats a valueless key as boolean true.
+    const localConfigPath = path.join(paths.repositoryRoot, '.git', 'config');
+    fs.appendFileSync(localConfigPath, '\t promisor\n');
+
+    const error = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    }).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'PARTIAL_CLONE_REJECTED',
+      diagnostics: expect.any(String),
+    });
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('rejects repositories that declare a promisor remote whose name contains special characters', async () => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    runGit(paths.repositoryRoot, [
+      'remote',
+      'add',
+      'foo/bar',
+      'https://example.invalid/foo-bar',
+    ]);
+    runGit(paths.repositoryRoot, [
+      'config',
+      '--local',
+      'remote.foo/bar.promisor',
+      'true',
+    ]);
+
+    const error = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    }).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'PARTIAL_CLONE_REJECTED',
+      diagnostics: expect.any(String),
+    });
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('does not reject a repository that defensively sets remote.cache.promisor=false', async () => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    runGit(paths.repositoryRoot, [
+      'remote',
+      'add',
+      'cache',
+      'https://example.invalid/cache',
+    ]);
+    runGit(paths.repositoryRoot, [
+      'config',
+      '--local',
+      'remote.cache.promisor',
+      'false',
+    ]);
+
+    const error = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    }).catch((caughtError: unknown) => caughtError);
+
+    // The probe must NOT reject an explicit `=false`. The repo is a clean,
+    // non-partial fixture, so materialization proceeds and stages the blob.
+    expect(error).not.toMatchObject({ code: 'PARTIAL_CLONE_REJECTED' });
   });
 
   test('sanitizes a raw error thrown by the runner during the partial-clone probe', async () => {

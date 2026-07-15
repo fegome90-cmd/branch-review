@@ -110,6 +110,12 @@ const hostGitExecutable = '/usr/bin/git';
 const immutableShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const regularBlobModes = new Set(['100644', '100755']);
 const isolatedGitConfigArgv = [
+  // `--no-lazy-fetch` is a global option that must precede the subcommand.
+  // On Git >=2.45 it definitively blocks lazy fetch of missing objects. On
+  // Git <2.45 the unknown option makes git fail (non-zero exit), which gives
+  // us a fail-closed guarantee: `runGit` surfaces that as GIT_COMMAND_FAILED
+  // rather than silently proceeding with a partial clone.
+  '--no-lazy-fetch',
   '-c',
   'core.fsmonitor=false',
   '-c',
@@ -636,9 +642,9 @@ function partialCloneRejected(): GraphifyMaterializerError {
  *
  * Note: command-line `-c` overrides (such as our defensive
  * `remote.origin.promisor=false`) do NOT appear in `git config --local --list`
- * output, which reads only `.git/config`. The `promisor=true` pattern still
- * matches only `=true`, so an explicit defensive `=false` written to local
- * config would not be rejected.
+ * output, which reads only `.git/config`. The promisor pattern matches all
+ * truthy boolean forms (`true`/`yes`/`on`/`1`) and bare valueless keys, but
+ * deliberately does NOT match an explicit `=false`/`=no`/`=off`/`=0`.
  */
 async function assertNotPartialClone(
   git: GraphifyGitRunner,
@@ -657,8 +663,15 @@ async function assertNotPartialClone(
 
 const promisorConfigPatterns: readonly RegExp[] = [
   /(^|\n)extensions\.partialclone=/iu,
-  /(^|\n)remote\.[a-z0-9._-]+\.promisor=true/i,
-  /(^|\n)remote\.[a-z0-9._-]+\.partialclonefilter=/iu,
+  // Match any remote name (Git allows `/`, `@`, etc.) and all truthy boolean
+  // forms (`true`/`yes`/`on`/`1`) plus a bare key with no `=` (git-config
+  // treats a valueless key as true). The `=value` group is optional so a bare
+  // `promisor` key matches; the alternation lists only truthy values, so an
+  // explicit `=false`/`=no`/`=off`/`=0` does NOT match (that is our own
+  // defensive override). The `(?=\n|$)` lookahead prevents matching a key
+  // with a longer suffix such as `promisorfilter`.
+  /(^|\n)remote\..+\.promisor(?:=(?:true|yes|on|1))?(?=\n|$)/iu,
+  /(^|\n)remote\..+\.partialclonefilter=/iu,
 ];
 
 function hasPromisorConfiguration(configText: string): boolean {
