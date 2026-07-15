@@ -3,7 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
-import type { PlanStatus, RunMetadata, RunStatus } from '../lib/constants.js';
+import {
+  type PlanStatus,
+  type RunMetadata,
+  type RunStatus,
+  SAFE_MODE,
+} from '../lib/constants.js';
 import { resolvePlan } from '../lib/plan-resolver.js';
 import {
   buildReviewBranchName,
@@ -104,6 +109,14 @@ export async function initCommand(options: {
           spinner.fail('Failed to create review branch');
           throw error;
         }
+      } else if (SAFE_MODE) {
+        spinner.text =
+          'Safe mode active: keeping current branch without mutation';
+        console.log(
+          chalk.yellow(
+            `Safe mode: staying on current branch "${currentBranch}" (no review/* branch created).`,
+          ),
+        );
       } else {
         spinner.fail(
           chalk.yellow('Not on a review/* branch. Use --create to create one.'),
@@ -198,6 +211,14 @@ export async function initCommand(options: {
       console.log(chalk.yellow('\n  Plan is MISSING. No matching plan found.'));
       console.log(
         chalk.gray('  Run: reviewctl plan --plan-path <path> to specify'),
+      );
+    }
+
+    if (SAFE_MODE && options.create) {
+      console.log(
+        chalk.yellow(
+          '  Safe mode mutation acknowledged: branch creation was explicitly requested with --create.',
+        ),
       );
     }
 

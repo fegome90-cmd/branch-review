@@ -31,6 +31,14 @@ bun run dev           # Start dashboard at localhost:3000
 bun reviewctl help    # Show CLI commands
 ```
 
+## Adoption Modes
+
+- **Dashboard development**: `bun run dev` serves the UI at `http://localhost:3000`.
+- **API mode**: production-style API runs at `http://localhost:3001` after `bun run build` + PM2.
+- **CLI in this repo**: use `bun reviewctl ...` directly.
+- **CLI from another repo**: follow `/reviewctl-quick-start.md` and set
+  `REVIEWCTL_CORE_CLI_PATH` explicitly before sourcing the wrapper.
+
 ## Quality Checks
 
 ```bash
@@ -56,6 +64,7 @@ bun run audit:deps                                        # Dependency vulnerabi
 | `verdict`               | Generate final PASS/FAIL verdict      |
 | `merge`                 | Merge branch after PASS               |
 | `cleanup`               | Remove run artifacts                  |
+| `doctor`                | Run local/external readiness checks   |
 
 ### Command Details
 
@@ -102,6 +111,9 @@ reviewctl ingest --static ruff --input ruff-output.txt
 ```
 init → explore context → explore diff → plan → run → ingest → verdict → merge
 ```
+
+For safe external CLI-only adoption, do **not** copy internal Husky/flow hooks
+blindly. Use the dedicated quick start and wrapper install path instead.
 
 ## API Endpoints
 

@@ -9,6 +9,7 @@ import {
   PRECONDITION_ERRORS,
   REVIEW_RUNS_DIR,
   type RunMetadata,
+  SAFE_MODE,
 } from './constants.js';
 
 /**
@@ -461,8 +462,19 @@ export function validatePreconditions(
   )[],
 ): void {
   const errors: string[] = [];
+  const run = getCurrentRun();
 
-  if (required.includes('review_branch') && !isOnReviewBranch()) {
+  const safeModeBranchAllowed =
+    SAFE_MODE &&
+    run !== null &&
+    run.branch.length > 0 &&
+    run.branch === getCurrentBranch();
+
+  if (
+    required.includes('review_branch') &&
+    !isOnReviewBranch() &&
+    !safeModeBranchAllowed
+  ) {
     errors.push(PRECONDITION_ERRORS.NOT_REVIEW_BRANCH);
   }
 
@@ -475,8 +487,6 @@ export function validatePreconditions(
   if (required.includes('diff') && !files.diff) {
     errors.push(PRECONDITION_ERRORS.MISSING_DIFF);
   }
-
-  const run = getCurrentRun();
 
   if (required.includes('plan_resolved')) {
     if (!run) {

@@ -495,7 +495,7 @@ ${planResult.status === 'MISSING' ? 'No plan available for drift comparison' : p
 
 | Gate | Status | Action Required |
 |------|--------|-----------------|
-| Context Available | ${fs.existsSync(path.join(process.cwd(), 'explore/context.md')) ? '✓' : '✗'} | ${fs.existsSync(path.join(process.cwd(), 'explore/context.md')) ? 'None' : 'Run: reviewctl explore context'} |
+| Context Available | ${fs.existsSync(path.join(EXPLORE_DIR, 'context.md')) ? '✓' : '✗'} | ${fs.existsSync(path.join(EXPLORE_DIR, 'context.md')) ? 'None' : 'Run: reviewctl explore context'} |
 | Diff Available | ✓ | None |
 | Plan Resolved | ${planResult.status === 'FOUND' ? '✓' : '✗'} | ${planResult.status === 'FOUND' ? 'None' : 'Provide plan path'} |
 | Drift Acceptable | ${planResult.status !== 'DRIFT_CONFIRMED' ? '✓' : '✗'} | ${planResult.status !== 'DRIFT_CONFIRMED' ? 'None' : 'Resolve drift'} |
