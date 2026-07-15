@@ -44,13 +44,18 @@ type SafetyErrorCode =
 
 export class GraphifySafetyError extends Error {
   readonly code: SafetyErrorCode;
-  readonly diagnostics: string;
+  readonly diagnostics!: string;
 
   constructor(code: SafetyErrorCode, message: string, diagnostics = message) {
     super(message);
     this.name = 'GraphifySafetyError';
     this.code = code;
-    this.diagnostics = diagnostics;
+    Object.defineProperty(this, 'diagnostics', {
+      configurable: false,
+      enumerable: true,
+      value: diagnostics,
+      writable: false,
+    });
   }
 }
 
@@ -142,26 +147,6 @@ const blockedEnvironmentKeySubstrings = [
   'DOCKER',
   'VAULT',
 ];
-
-function immutableDiagnosticsError(
-  error: GraphifySafetyError,
-): GraphifySafetyError {
-  const diagnostics = error.diagnostics;
-  return new Proxy(error, {
-    get(target, property, receiver) {
-      if (property === 'diagnostics') {
-        return diagnostics;
-      }
-      return Reflect.get(target, property, receiver);
-    },
-    set(target, property, value, receiver) {
-      if (property === 'diagnostics') {
-        return true;
-      }
-      return Reflect.set(target, property, value, receiver);
-    },
-  });
-}
 
 function invalidRoot(label: string, reason: string): GraphifySafetyError {
   return new GraphifySafetyError('INVALID_ROOT', `${label} ${reason}`);
@@ -564,12 +549,10 @@ function assertPolicyLimits(policy: GraphifySafetyPolicy): void {
 }
 
 function filesystemIsolationUnavailableError(): GraphifySafetyError {
-  return immutableDiagnosticsError(
-    new GraphifySafetyError(
-      'FILESYSTEM_ISOLATION_UNAVAILABLE',
-      'filesystem and process isolation provider is unavailable',
-      'pre-execution isolation failed closed: a genuine host filesystem/process containment provider is required before trusted process execution',
-    ),
+  return new GraphifySafetyError(
+    'FILESYSTEM_ISOLATION_UNAVAILABLE',
+    'filesystem and process isolation provider is unavailable',
+    'pre-execution isolation failed closed: a genuine host filesystem/process containment provider is required before trusted process execution',
   );
 }
 

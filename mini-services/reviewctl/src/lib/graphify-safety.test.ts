@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   assertSafeRoots,
   createMinimalEnvironment,
+  GraphifySafetyError,
   type GraphifySafetyPolicy,
   isSameOrInside,
   runTrustedProcess,
@@ -920,16 +921,19 @@ describe('Graphify trusted execution contract', () => {
     try {
       const childScript = `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(startedChildMarker)}, 'started'); setTimeout(() => fs.writeFileSync(${JSON.stringify(survivingChildMarker)}, 'survived'), 300); setTimeout(() => {}, 60_000)`;
       const parentScript = `const { spawn } = require('node:child_process'); const fs = require('node:fs'); spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { stdio: 'ignore' }); while (!fs.existsSync(${JSON.stringify(startedChildMarker)})) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); } setTimeout(() => {}, 60_000)`;
-      const error = await expectFilesystemIsolationUnavailable(
-        runTrustedProcess(
-          createPolicy(paths, { timeoutMs: 50 }),
-          nodeArgv(parentScript),
-        ),
-      );
+      const error = await runTrustedProcess(
+        createPolicy(paths, { timeoutMs: 50 }),
+        nodeArgv(parentScript),
+      ).catch((caughtError: unknown) => caughtError);
+      // Capture diagnostics before any matcher touches the error object:
+      // bun's toMatchObject rewrites the matched property descriptor.
+      const diagnostics = (error as { diagnostics: string }).diagnostics;
+      expect(error).toMatchObject({
+        code: 'FILESYSTEM_ISOLATION_UNAVAILABLE',
+        diagnostics: expect.any(String),
+      });
 
-      expect((error as { diagnostics: string }).diagnostics).not.toContain(
-        secret,
-      );
+      expect(diagnostics).not.toContain(secret);
       expect(JSON.stringify(error)).not.toContain(secret);
       expect(fs.existsSync(startedChildMarker)).toBe(false);
       await new Promise((resolve) => setTimeout(resolve, 400));
@@ -1019,5 +1023,53 @@ describe('Graphify trusted execution contract', () => {
     );
     expect(networkCallbackInvoked).toBe(false);
     expect(fs.existsSync(startedMarker)).toBe(false);
+  });
+});
+
+describe('GraphifySafetyError diagnostics immutability', () => {
+  function createError(): GraphifySafetyError {
+    return new GraphifySafetyError(
+      'FILESYSTEM_ISOLATION_UNAVAILABLE' as GraphifySafetyError['code'],
+      'filesystem and process isolation provider is unavailable',
+      'pre-execution isolation failed closed',
+    );
+  }
+
+  test('GraphifySafetyError diagnostics cannot be reassigned', () => {
+    const error = createError();
+    const original = error.diagnostics;
+
+    // ES module strict mode throws TypeError when assigning to a
+    // non-writable property — the property stays immutable either way.
+    expect(() => {
+      (error as { diagnostics: string }).diagnostics = 'tampered';
+    }).toThrow(TypeError);
+    expect(error.diagnostics).toBe(original);
+    expect(error.diagnostics).not.toBe('tampered');
+  });
+
+  test('GraphifySafetyError diagnostics cannot be deleted', () => {
+    const error = createError();
+    const original = error.diagnostics;
+
+    expect(() => {
+      delete (error as { diagnostics?: string }).diagnostics;
+    }).toThrow(TypeError);
+    expect(error.diagnostics).toBe(original);
+  });
+
+  test('GraphifySafetyError diagnostics cannot be redefined via defineProperty', () => {
+    const error = createError();
+    const original = error.diagnostics;
+
+    expect(() => {
+      Object.defineProperty(error, 'diagnostics', {
+        value: 'tampered',
+        writable: true,
+        configurable: true,
+      });
+    }).toThrow();
+    expect(error.diagnostics).toBe(original);
+    expect(error.diagnostics).not.toBe('tampered');
   });
 });

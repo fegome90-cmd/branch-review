@@ -31,6 +31,7 @@ type MaterializerErrorCode =
   | 'INVALID_GIT_EXECUTABLE'
   | 'INVALID_GIT_REF'
   | 'MATERIALIZATION_LIMIT_EXCEEDED'
+  | 'PARTIAL_CLONE_REJECTED'
   | 'STAGING_CLEANUP_FAILED'
   | 'STAGING_WRITE_FAILED'
   | 'UNAPPROVED_CHANGED_PATH'
@@ -117,6 +118,19 @@ const isolatedGitConfigArgv = [
   'core.pager=cat',
   '-c',
   'diff.external=',
+  // Neutralize lazy-fetch credential vectors. A partial clone can trigger a
+  // promisor fetch when reading missing objects; that fetch reads local
+  // .git/config (which the env overrides above do not cover) and may invoke
+  // credential.helper (an arbitrary executable). `-c` overrides take
+  // precedence over local config, so we blank these out defensively.
+  '-c',
+  'credential.helper=',
+  '-c',
+  'remote.origin.promisor=false',
+  '-c',
+  'http.proxy=',
+  '-c',
+  'https.proxy=',
 ] as const;
 
 function safeGitEnvironment(): NodeJS.ProcessEnv {
@@ -593,6 +607,38 @@ async function assertCleanGitWorktree(
   }
 }
 
+function partialCloneRejected(): GraphifyMaterializerError {
+  return new GraphifyMaterializerError(
+    'PARTIAL_CLONE_REJECTED',
+    'partial clone repositories are not safe for materialization',
+    'partial clone repositories are rejected',
+  );
+}
+
+/**
+ * Reject partial/promise clones before any object read can trigger a lazy
+ * fetch. A partial clone sets the local config extension
+ * `extensions.partialclone=<remote>` (git stores the key lowercased). We list
+ * local config — which always exits 0 for a valid repo, avoiding the exit-1
+ * ambiguity of `git config --get` — and reject if the extension is present.
+ */
+async function assertNotPartialClone(
+  git: GraphifyGitRunner,
+  repositoryRoot: string,
+): Promise<void> {
+  const result = await git.run({
+    argv: [...isolatedGitConfigArgv, 'config', '--local', '--list'],
+    cwd: repositoryRoot,
+    env: safeGitEnvironment(),
+    executable: git.executable,
+    shell: false,
+  });
+  const configText = result.stdout.toString('utf8');
+  if (/(^|\n)extensions\.partialclone=/iu.test(configText)) {
+    throw partialCloneRejected();
+  }
+}
+
 function parseTreeEntry(
   output: Buffer,
   requestedPath: string,
@@ -760,13 +806,15 @@ export async function materializeGitFileSet(
     ? target.repositoryRoot
     : safeRoots.reviewedRepository;
   assertValidMaterializationLimits(options);
-  const stagingRoot = path.resolve(policy.stagingRoot);
+  const stagingRoot = safeRoots.stagingRoot;
   const usesDefaultGitRunner = !options.git;
   const git = options.git ?? defaultGitRunner(policy);
 
   cleanStagingRoot(stagingRoot);
 
   try {
+    await assertNotPartialClone(git, executionRepositoryRoot);
+
     if (usesDefaultGitRunner) {
       await assertCleanGitWorktree(git, executionRepositoryRoot);
     }

@@ -44,3 +44,12 @@ jobs:
       - name: Ruff check changed Python files
         shell: bash
         run: BR_DIFF_RANGE="origin/${{ github.base_ref }}...HEAD" bash scripts/run-ruff-check.sh
+
+      - name: Run safety and materializer tests
+        run: |
+          bun test \
+            mini-services/reviewctl/src/lib/graphify-safety.test.ts \
+            mini-services/reviewctl/src/lib/graphify-materializer.test.ts
+
+      - name: Typecheck mini-services
+        run: bun run typecheck:mini-services

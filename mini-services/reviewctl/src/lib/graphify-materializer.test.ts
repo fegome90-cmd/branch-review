@@ -47,6 +47,14 @@ const isolatedGitArgvPrefix = [
   'core.pager=cat',
   '-c',
   'diff.external=',
+  '-c',
+  'credential.helper=',
+  '-c',
+  'remote.origin.promisor=false',
+  '-c',
+  'http.proxy=',
+  '-c',
+  'https.proxy=',
 ] as const;
 
 type SourceManifestEntry = {
@@ -125,6 +133,10 @@ function createTarget(paths: MaterializerTestPaths): RepositoryTarget {
     headSha: fullSha.head,
     mergeBaseSha: fullSha.mergeBase,
   };
+}
+
+function canonicalPath(filePath: string): string {
+  return fs.realpathSync.native(filePath);
 }
 
 function runGit(
@@ -321,6 +333,22 @@ function withoutGitIsolationPrefix(argv: readonly string[]): string[] {
   return [...argv.slice(isolatedGitArgvPrefix.length)];
 }
 
+/**
+ * Materialization now probes `config --local --list` before reading objects to
+ * reject partial clones. For inline fake runners this returns empty stdout (no
+ * extensions.partialclone entry → not a partial clone). Returns undefined when
+ * the argv is not the partial-clone probe, so the caller can continue
+ * dispatching.
+ */
+function handlePartialCloneProbe(
+  argv: readonly string[],
+): { stdout: Buffer; stderr: Buffer } | undefined {
+  if (argv[0] === 'config' && argv[1] === '--local' && argv[2] === '--list') {
+    return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
+  }
+  return undefined;
+}
+
 function createFakeGitRunner(options: {
   repositoryRoot: string;
   changedPaths?: readonly string[];
@@ -356,6 +384,7 @@ function createFakeGitRunner(options: {
     ],
     ['merge-base', fullSha.base, fullSha.head],
     ['merge-base', fullSha.sha256Base, fullSha.sha256Head],
+    ['config', '--local', '--list'],
     [
       'diff',
       '--name-only',
@@ -421,6 +450,15 @@ function createFakeGitRunner(options: {
             ? commitResolutions.get('sha256-merge-base')
             : commitResolutions.get('merge-base');
         return { stdout: Buffer.from(`${sha}\n`), stderr: Buffer.alloc(0) };
+      }
+
+      if (
+        argv[0] === 'config' &&
+        argv[1] === '--local' &&
+        argv[2] === '--list'
+      ) {
+        // No extensions.partialclone entry → not a partial clone.
+        return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
       }
 
       if (argv[0] === 'diff') {
@@ -751,7 +789,7 @@ describe('Graphify Git materializer file boundary', () => {
       },
     );
 
-    expect(result.stagingRoot).toBe(path.resolve(paths.stagingRoot));
+    expect(result.stagingRoot).toBe(canonicalPath(paths.stagingRoot));
     expect(result.includedFiles).toEqual([
       '--leading-dash.txt',
       'new\nline.txt',
@@ -794,7 +832,8 @@ describe('Graphify Git materializer file boundary', () => {
     const invocations = git.invocations.map((invocation) =>
       withoutGitIsolationPrefix(invocation.argv),
     );
-    expect(invocations[0]).toEqual([
+    expect(invocations[0]).toEqual(['config', '--local', '--list']);
+    expect(invocations[1]).toEqual([
       'diff',
       '--name-only',
       '-z',
@@ -882,6 +921,7 @@ describe('Graphify Git materializer file boundary', () => {
         withoutGitIsolationPrefix(invocation.argv),
       ),
     ).toEqual([
+      ['config', '--local', '--list'],
       [
         'diff',
         '--name-only',
@@ -1141,6 +1181,10 @@ describe('Graphify Git materializer file boundary', () => {
           git.executable,
         );
         const argv = withoutGitIsolationPrefix(invocation.argv);
+        const probe = handlePartialCloneProbe(argv);
+        if (probe) {
+          return probe;
+        }
         expect(argv[0]).toBe('diff');
         return { stdout: Buffer.from('safe.txt'), stderr: Buffer.alloc(0) };
       },
@@ -1178,6 +1222,10 @@ describe('Graphify Git materializer file boundary', () => {
           git.executable,
         );
         const argv = withoutGitIsolationPrefix(invocation.argv);
+        const probe = handlePartialCloneProbe(argv);
+        if (probe) {
+          return probe;
+        }
         expect(argv[0]).toBe('diff');
         return { stdout: Buffer.from('safe.txt\0\0'), stderr: Buffer.alloc(0) };
       },
@@ -1220,6 +1268,10 @@ describe('Graphify Git materializer file boundary', () => {
           git.executable,
         );
         const argv = withoutGitIsolationPrefix(invocation.argv);
+        const probe = handlePartialCloneProbe(argv);
+        if (probe) {
+          return probe;
+        }
         if (argv[0] === 'diff') {
           return { stdout: Buffer.from('safe.txt\0'), stderr: Buffer.alloc(0) };
         }
@@ -1274,6 +1326,10 @@ describe('Graphify Git materializer file boundary', () => {
           git.executable,
         );
         const argv = withoutGitIsolationPrefix(invocation.argv);
+        const probe = handlePartialCloneProbe(argv);
+        if (probe) {
+          return probe;
+        }
         if (argv[0] === 'diff') {
           return { stdout: Buffer.from('safe.txt\0'), stderr: Buffer.alloc(0) };
         }
@@ -1322,6 +1378,10 @@ describe('Graphify Git materializer file boundary', () => {
           git.executable,
         );
         const argv = withoutGitIsolationPrefix(invocation.argv);
+        const probe = handlePartialCloneProbe(argv);
+        if (probe) {
+          return probe;
+        }
         if (argv[0] === 'diff') {
           return { stdout: Buffer.from('safe.txt\0'), stderr: Buffer.alloc(0) };
         }
@@ -1379,6 +1439,10 @@ describe('Graphify Git materializer file boundary', () => {
             git.executable,
           );
           const argv = withoutGitIsolationPrefix(invocation.argv);
+          const probe = handlePartialCloneProbe(argv);
+          if (probe) {
+            return probe;
+          }
           if (argv[0] === 'diff') {
             return {
               stdout: Buffer.from('safe.txt\0'),
@@ -1547,7 +1611,7 @@ describe('Graphify Git materializer file boundary', () => {
     });
 
     expect(result).toEqual({
-      stagingRoot: path.resolve(paths.stagingRoot),
+      stagingRoot: canonicalPath(paths.stagingRoot),
       includedFiles: ['src/app.ts'],
       skippedFiles: [],
     });
@@ -1645,6 +1709,94 @@ describe('Graphify Git materializer file boundary', () => {
     expect(diffInvocation).not.toContain(fullSha.base);
   });
 
+  test('writes to the canonical staging root when policy.stagingRoot is a symlink', async () => {
+    const paths = createPaths();
+    const realStagingTarget = path.join(paths.sandbox, 'real-staging-target');
+    const stagingSymlink = path.join(paths.sandbox, 'staging-symlink');
+    fs.mkdirSync(realStagingTarget);
+    fs.symlinkSync(realStagingTarget, stagingSymlink, 'dir');
+    const canonicalStagingRoot = canonicalPath(stagingSymlink);
+
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: ['safe.txt'],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          'safe.txt',
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'safe\n' },
+        ],
+      ]),
+    });
+
+    const result = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths, { stagingRoot: stagingSymlink }),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    );
+
+    // The returned staging root is the canonical realpath, not the symlink.
+    expect(result.stagingRoot).toBe(canonicalStagingRoot);
+    expect(result.stagingRoot).not.toBe(stagingSymlink);
+    // The blob is materialized under the canonical target path.
+    expect(
+      fs.readFileSync(path.join(realStagingTarget, 'safe.txt'), 'utf8'),
+    ).toBe('safe\n');
+  });
+
+  test('rejects partial clone repositories before any git fetch', async () => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    // Mark the repository as a partial clone in local config.
+    runGit(paths.repositoryRoot, [
+      'config',
+      '--local',
+      'extensions.partialClone',
+      'origin',
+    ]);
+
+    const error = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    }).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'PARTIAL_CLONE_REJECTED',
+      diagnostics: expect.any(String),
+    });
+    // Rejection happens before any blob is materialized: staging stays empty.
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('neutralizes credential.helper and promisor via -c overrides on every git invocation', async () => {
+    const paths = createPaths();
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: ['safe.txt'],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          'safe.txt',
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'safe\n' },
+        ],
+      ]),
+    });
+
+    await materializeGitFileSet(createTarget(paths), createPolicy(paths), {
+      git,
+      approvedPaths: ['safe.txt'],
+      maxFiles: 10,
+    });
+
+    expect(git.invocations.length).toBeGreaterThan(0);
+    for (const invocation of git.invocations) {
+      // -c overrides that take precedence over local .git/config to block the
+      // lazy-fetch credential vector.
+      expect(invocation.argv).toContain('credential.helper=');
+      expect(invocation.argv).toContain('remote.origin.promisor=false');
+      // The environment never carries an executable credential helper.
+      expect(invocation.env).not.toHaveProperty('GIT_CREDENTIAL_HELPER');
+    }
+  });
+
   test('rejects invalid UTF-8 bytes in NUL-framed diff paths', async () => {
     const paths = createPaths();
     const git: FakeGitRunner = {
@@ -1663,6 +1815,10 @@ describe('Graphify Git materializer file boundary', () => {
           git.executable,
         );
         const argv = withoutGitIsolationPrefix(invocation.argv);
+        const probe = handlePartialCloneProbe(argv);
+        if (probe) {
+          return probe;
+        }
         expect(argv[0]).toBe('diff');
         return {
           stdout: Buffer.from([0xff, 0xfe, 0x00]),
@@ -1703,6 +1859,10 @@ describe('Graphify Git materializer file boundary', () => {
           git.executable,
         );
         const argv = withoutGitIsolationPrefix(invocation.argv);
+        const probe = handlePartialCloneProbe(argv);
+        if (probe) {
+          return probe;
+        }
         if (argv[0] === 'diff') {
           return { stdout: Buffer.from('safe.txt\0'), stderr: Buffer.alloc(0) };
         }
@@ -1790,10 +1950,14 @@ describe('Graphify Git materializer staging error sanitization', () => {
     });
 
     const originalRmSync = fs.rmSync;
+    const protectedStagingRootCanonical = canonicalPath(protectedStagingRoot);
     (fs as typeof fs).rmSync = ((
       ...args: Parameters<typeof fs.rmSync>
     ): void => {
-      if (typeof args[0] === 'string' && args[0] === protectedStagingRoot) {
+      if (
+        typeof args[0] === 'string' &&
+        args[0] === protectedStagingRootCanonical
+      ) {
         throw new Error('simulated staging cleanup failure');
       }
       originalRmSync(...args);
@@ -1880,11 +2044,15 @@ describe('Graphify Git materializer staging error sanitization', () => {
     });
 
     const originalRmSync = fs.rmSync;
+    const protectedStagingRootCanonical = canonicalPath(protectedStagingRoot);
     let stagingRootRmCount = 0;
     (fs as typeof fs).rmSync = ((
       ...args: Parameters<typeof fs.rmSync>
     ): void => {
-      if (typeof args[0] === 'string' && args[0] === protectedStagingRoot) {
+      if (
+        typeof args[0] === 'string' &&
+        args[0] === protectedStagingRootCanonical
+      ) {
         stagingRootRmCount += 1;
         if (stagingRootRmCount > 1) {
           throw new Error('simulated staging cleanup failure');
