@@ -6,6 +6,7 @@ import {
   assertSafeRoots,
   createMinimalEnvironment,
   type GraphifySafetyPolicy,
+  isSameOrInside,
   runTrustedProcess,
 } from './graphify-safety.js';
 
@@ -190,6 +191,24 @@ describe('Graphify safety boundary', () => {
     const paths = createSafetyPaths();
 
     expect(() => assertSafeRoots(createPolicy(paths))).not.toThrow();
+  });
+
+  test('treats names beginning with .. as inside when they are not parent escapes', () => {
+    const paths = createSafetyPaths();
+    const dotdotNamedRoot = path.join(paths.reviewedRepository, '..run-store');
+    fs.mkdirSync(dotdotNamedRoot);
+
+    expect(isSameOrInside(paths.reviewedRepository, dotdotNamedRoot)).toBe(
+      true,
+    );
+    expect(
+      isSameOrInside(paths.reviewedRepository, paths.reviewedRepository),
+    ).toBe(true);
+    const trueEscape = path.join(
+      path.dirname(paths.reviewedRepository),
+      'sibling',
+    );
+    expect(isSameOrInside(paths.reviewedRepository, trueEscape)).toBe(false);
   });
 });
 

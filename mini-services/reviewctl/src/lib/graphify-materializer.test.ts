@@ -362,7 +362,7 @@ function createFakeGitRunner(options: {
       '-z',
       '--no-ext-diff',
       '--no-textconv',
-      fullSha.base,
+      fullSha.mergeBase,
       fullSha.head,
       '--',
     ],
@@ -800,7 +800,7 @@ describe('Graphify Git materializer file boundary', () => {
       '-z',
       '--no-ext-diff',
       '--no-textconv',
-      fullSha.base,
+      fullSha.mergeBase,
       fullSha.head,
       '--',
     ]);
@@ -888,7 +888,7 @@ describe('Graphify Git materializer file boundary', () => {
         '-z',
         '--no-ext-diff',
         '--no-textconv',
-        fullSha.base,
+        fullSha.mergeBase,
         fullSha.head,
         '--',
       ],
@@ -1584,5 +1584,329 @@ describe('Graphify Git materializer file boundary', () => {
 
     expect(result.includedFiles).toEqual(['src/app.ts']);
     expect(fs.existsSync(markerPath)).toBe(false);
+  });
+
+  test('keeps a staged file whose path begins with ..notes inside the staging root', async () => {
+    const paths = createPaths();
+    const sourceManifestBefore = captureSourceManifest(paths.repositoryRoot);
+    const dotNotesPath = '..notes.md';
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: [dotNotesPath],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          dotNotesPath,
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'notes\n' },
+        ],
+      ]),
+    });
+
+    const result = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: [dotNotesPath], maxFiles: 10 },
+    );
+
+    expect(result.includedFiles).toEqual([dotNotesPath]);
+    expect(
+      fs.readFileSync(path.join(paths.stagingRoot, dotNotesPath), 'utf8'),
+    ).toBe('notes\n');
+    expect(
+      fs.existsSync(path.join(path.dirname(paths.stagingRoot), 'notes.md')),
+    ).toBe(false);
+    expectSourceManifestUnchanged(paths, sourceManifestBefore);
+  });
+
+  test('computes changed paths from the merge base, not the configured base', async () => {
+    const paths = createPaths();
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: ['safe.txt'],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          'safe.txt',
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'safe\n' },
+        ],
+      ]),
+    });
+
+    await materializeGitFileSet(createTarget(paths), createPolicy(paths), {
+      git,
+      approvedPaths: ['safe.txt'],
+      maxFiles: 10,
+    });
+
+    const diffInvocation = git.invocations
+      .map((invocation) => withoutGitIsolationPrefix(invocation.argv))
+      .find((argv) => argv[0] === 'diff');
+    expect(diffInvocation).toBeDefined();
+    expect(diffInvocation?.[5]).toBe(fullSha.mergeBase);
+    expect(diffInvocation?.[6]).toBe(fullSha.head);
+    expect(diffInvocation).not.toContain(fullSha.base);
+  });
+
+  test('rejects invalid UTF-8 bytes in NUL-framed diff paths', async () => {
+    const paths = createPaths();
+    const git: FakeGitRunner = {
+      executable: '/usr/bin/git',
+      invocations: [],
+      async run(invocation) {
+        git.invocations.push({
+          ...invocation,
+          argv: [...invocation.argv],
+          env: { ...invocation.env },
+        });
+        assertCanonicalGitInvocation(
+          invocation,
+          invocation.argv,
+          paths.repositoryRoot,
+          git.executable,
+        );
+        const argv = withoutGitIsolationPrefix(invocation.argv);
+        expect(argv[0]).toBe('diff');
+        return {
+          stdout: Buffer.from([0xff, 0xfe, 0x00]),
+          stderr: Buffer.alloc(0),
+        };
+      },
+    };
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'GIT_COMMAND_FAILED',
+      diagnostics: expect.any(String),
+    });
+    expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+  });
+
+  test('rejects invalid UTF-8 bytes in the ls-tree path field', async () => {
+    const paths = createPaths();
+    const objectId = 'a'.repeat(40);
+    const git: FakeGitRunner = {
+      executable: '/usr/bin/git',
+      invocations: [],
+      async run(invocation) {
+        git.invocations.push({
+          ...invocation,
+          argv: [...invocation.argv],
+          env: { ...invocation.env },
+        });
+        assertCanonicalGitInvocation(
+          invocation,
+          invocation.argv,
+          paths.repositoryRoot,
+          git.executable,
+        );
+        const argv = withoutGitIsolationPrefix(invocation.argv);
+        if (argv[0] === 'diff') {
+          return { stdout: Buffer.from('safe.txt\0'), stderr: Buffer.alloc(0) };
+        }
+        if (argv[0] === 'ls-tree') {
+          return {
+            stdout: Buffer.concat([
+              Buffer.from(`100644 blob ${objectId}\t`),
+              Buffer.from([0xff, 0xfe]),
+              Buffer.from([0]),
+            ]),
+            stderr: Buffer.alloc(0),
+          };
+        }
+        throw new Error(`unexpected git argv: ${argv.join(' ')}`);
+      },
+    };
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'GIT_COMMAND_FAILED',
+      diagnostics: expect.any(String),
+    });
+    expect(
+      git.invocations.some(
+        (invocation) =>
+          withoutGitIsolationPrefix(invocation.argv)[0] === 'cat-file',
+      ),
+    ).toBe(false);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+});
+
+describe('defaultGitRunner policy validation', () => {
+  const invalidLimitValues = [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    -1,
+    0,
+    1.5,
+    Number.MAX_SAFE_INTEGER + 1,
+  ];
+
+  for (const field of ['timeoutMs', 'maxOutputBytes'] as const) {
+    for (const invalidValue of invalidLimitValues) {
+      test(`rejects ${field}=${String(invalidValue)} before any Git invocation`, async () => {
+        const paths = createPaths();
+
+        const error = await materializeGitFileSet(
+          createTarget(paths),
+          createPolicy(paths, { [field]: invalidValue }),
+          { approvedPaths: ['safe.txt'], maxFiles: 10 },
+        ).catch((caughtError: unknown) => caughtError);
+
+        expect(error).toMatchObject({
+          code: 'INVALID_POLICY_LIMIT',
+        });
+        expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+      });
+    }
+  }
+});
+
+describe('Graphify Git materializer staging error sanitization', () => {
+  test('sanitizes staging root cleanup failures', async () => {
+    const paths = createPaths();
+    const protectedStagingRoot = path.join(
+      paths.sandbox,
+      'protected-staging-root',
+    );
+    fs.mkdirSync(protectedStagingRoot);
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: ['safe.txt'],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          'safe.txt',
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'safe\n' },
+        ],
+      ]),
+    });
+
+    const originalRmSync = fs.rmSync;
+    (fs as typeof fs).rmSync = ((
+      ...args: Parameters<typeof fs.rmSync>
+    ): void => {
+      if (typeof args[0] === 'string' && args[0] === protectedStagingRoot) {
+        throw new Error('simulated staging cleanup failure');
+      }
+      originalRmSync(...args);
+    }) as typeof fs.rmSync;
+
+    try {
+      const error = await materializeGitFileSet(
+        createTarget(paths),
+        createPolicy(paths, { stagingRoot: protectedStagingRoot }),
+        { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(error).toMatchObject({
+        code: 'STAGING_CLEANUP_FAILED',
+      });
+      expect(JSON.stringify(error)).not.toContain(protectedStagingRoot);
+      expect(JSON.stringify(error)).not.toContain(
+        'simulated staging cleanup failure',
+      );
+    } finally {
+      (fs as typeof fs).rmSync = originalRmSync;
+    }
+  });
+
+  test('sanitizes blob write failures', async () => {
+    const paths = createPaths();
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: ['safe.txt'],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          'safe.txt',
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'safe\n' },
+        ],
+      ]),
+    });
+
+    const originalWriteFileSync = fs.writeFileSync;
+    (fs as typeof fs).writeFileSync = ((
+      ...args: Parameters<typeof fs.writeFileSync>
+    ) => {
+      const target = typeof args[0] === 'string' ? args[0] : '';
+      if (target.includes('.tmp-')) {
+        throw new Error('simulated blob write failure');
+      }
+      return originalWriteFileSync(...args);
+    }) as typeof fs.writeFileSync;
+
+    try {
+      const error = await materializeGitFileSet(
+        createTarget(paths),
+        createPolicy(paths),
+        { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(error).toMatchObject({
+        code: 'STAGING_WRITE_FAILED',
+      });
+      expect(JSON.stringify(error)).not.toContain(paths.stagingRoot);
+      expect(JSON.stringify(error)).not.toContain(
+        'simulated blob write failure',
+      );
+    } finally {
+      (fs as typeof fs).writeFileSync = originalWriteFileSync;
+    }
+  });
+
+  test('preserves the original error when catch-block cleanup fails', async () => {
+    const paths = createPaths();
+    const protectedStagingRoot = path.join(
+      paths.sandbox,
+      'cleanup-failure-staging-root',
+    );
+    fs.mkdirSync(protectedStagingRoot);
+    const git = createFakeGitRunner({
+      repositoryRoot: paths.repositoryRoot,
+      changedPaths: ['unapproved.txt'],
+      treeEntries: new Map<string, TreeEntry>([
+        [
+          'unapproved.txt',
+          { mode: '100644', objectId: 'a'.repeat(40), content: 'unapproved\n' },
+        ],
+      ]),
+    });
+
+    const originalRmSync = fs.rmSync;
+    let stagingRootRmCount = 0;
+    (fs as typeof fs).rmSync = ((
+      ...args: Parameters<typeof fs.rmSync>
+    ): void => {
+      if (typeof args[0] === 'string' && args[0] === protectedStagingRoot) {
+        stagingRootRmCount += 1;
+        if (stagingRootRmCount > 1) {
+          throw new Error('simulated staging cleanup failure');
+        }
+      }
+      originalRmSync(...args);
+    }) as typeof fs.rmSync;
+
+    try {
+      const error = await materializeGitFileSet(
+        createTarget(paths),
+        createPolicy(paths, { stagingRoot: protectedStagingRoot }),
+        { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(error).toMatchObject({
+        code: 'UNAPPROVED_CHANGED_PATH',
+      });
+      expect(JSON.stringify(error)).not.toContain(protectedStagingRoot);
+      expect(JSON.stringify(error)).not.toContain('STAGING_CLEANUP_FAILED');
+    } finally {
+      (fs as typeof fs).rmSync = originalRmSync;
+    }
   });
 });

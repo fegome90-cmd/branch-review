@@ -321,12 +321,21 @@ function normalizedDirectory(label: string, value: string): string {
   return path.resolve(value);
 }
 
-function isSameOrInside(parent: string, child: string): boolean {
+export function isSameOrInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
-  return (
-    relative === '' ||
-    (!relative.startsWith('..') && !path.isAbsolute(relative))
-  );
+  if (relative === '') {
+    return true;
+  }
+  if (path.isAbsolute(relative)) {
+    return false;
+  }
+  if (relative === '..') {
+    return false;
+  }
+  if (relative.startsWith(`..${path.sep}`)) {
+    return false;
+  }
+  return true;
 }
 
 function assertDistinctDisjointRoots(
@@ -539,7 +548,7 @@ function assertSupportedTrustedArguments(argv: readonly string[]): void {
   );
 }
 
-function assertPositiveSafeInteger(label: string, value: number): void {
+export function assertPositiveSafeInteger(label: string, value: number): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new GraphifySafetyError(
       'INVALID_POLICY_LIMIT',

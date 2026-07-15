@@ -3,9 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import {
+  assertPositiveSafeInteger,
   assertSafeRoots,
   createMinimalEnvironment,
   type GraphifySafetyPolicy,
+  isSameOrInside,
 } from './graphify-safety.js';
 
 const execFileAsync = promisify(execFile);
@@ -29,6 +31,8 @@ type MaterializerErrorCode =
   | 'INVALID_GIT_EXECUTABLE'
   | 'INVALID_GIT_REF'
   | 'MATERIALIZATION_LIMIT_EXCEEDED'
+  | 'STAGING_CLEANUP_FAILED'
+  | 'STAGING_WRITE_FAILED'
   | 'UNAPPROVED_CHANGED_PATH'
   | 'UNSAFE_GIT_PATH';
 
@@ -174,14 +178,6 @@ function sanitizedGitError(): GraphifyMaterializerError {
   );
 }
 
-function isSameOrInside(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-  return (
-    relative === '' ||
-    (!relative.startsWith('..') && !path.isAbsolute(relative))
-  );
-}
-
 function validateHostGitExecutable(
   policy: GraphifySafetyPolicy | undefined,
 ): string {
@@ -237,8 +233,13 @@ function validateHostGitExecutable(
 }
 
 function defaultGitRunner(policy?: GraphifySafetyPolicy): GraphifyGitRunner {
+  const executable = validateHostGitExecutable(policy);
+  if (policy) {
+    assertPositiveSafeInteger('timeoutMs', policy.timeoutMs);
+    assertPositiveSafeInteger('maxOutputBytes', policy.maxOutputBytes);
+  }
   return {
-    executable: validateHostGitExecutable(policy),
+    executable,
     async run(invocation) {
       try {
         const { stdout, stderr } = await execFileAsync(
@@ -380,12 +381,21 @@ function parseNulPaths(output: Buffer): string[] {
     return [];
   }
 
-  const frames = output.toString('utf8').split('\0');
+  let frames: string[];
+  try {
+    frames = decodeGitBytes(output).split('\0');
+  } catch {
+    throw malformedNulFraming();
+  }
   const records = frames.slice(0, -1);
   if (records.some((entry) => entry.length === 0)) {
     throw malformedNulFraming();
   }
   return records;
+}
+
+function decodeGitBytes(output: Buffer): string {
+  return new TextDecoder('utf8', { fatal: true }).decode(output);
 }
 
 function normalizeGitPath(filePath: string): string {
@@ -517,8 +527,16 @@ function assertFileLimit(
 }
 
 function cleanStagingRoot(stagingRoot: string): void {
-  fs.rmSync(stagingRoot, { force: true, recursive: true });
-  fs.mkdirSync(stagingRoot, { recursive: true, mode: 0o700 });
+  try {
+    fs.rmSync(stagingRoot, { force: true, recursive: true });
+    fs.mkdirSync(stagingRoot, { recursive: true, mode: 0o700 });
+  } catch {
+    throw new GraphifyMaterializerError(
+      'STAGING_CLEANUP_FAILED',
+      'failed to prepare staging root',
+      'staging root cleanup failed',
+    );
+  }
 }
 
 function dirtyGitWorktree(): GraphifyMaterializerError {
@@ -584,7 +602,12 @@ function parseTreeEntry(
     return undefined;
   }
 
-  const frames = output.toString('utf8').split('\0');
+  let frames: string[];
+  try {
+    frames = decodeGitBytes(output).split('\0');
+  } catch {
+    throw malformedNulFraming();
+  }
   const records = frames.slice(0, -1);
   if (records.length !== 1 || records[0]?.length === 0) {
     throw malformedNulFraming();
@@ -681,10 +704,23 @@ function writeBlobAtomically(
   content: Buffer,
 ): void {
   const destination = destinationFor(stagingRoot, filePath);
-  fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
   const temporary = `${destination}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(temporary, content, { mode: 0o600 });
-  fs.renameSync(temporary, destination);
+  try {
+    fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(temporary, content, { mode: 0o600 });
+    fs.renameSync(temporary, destination);
+  } catch {
+    try {
+      fs.rmSync(temporary, { force: true });
+    } catch {
+      // best-effort cleanup; do not replace the original error
+    }
+    throw new GraphifyMaterializerError(
+      'STAGING_WRITE_FAILED',
+      'failed to stage blob',
+      'blob staging write failed',
+    );
+  }
 }
 
 function sortPaths(paths: readonly string[]): string[] {
@@ -743,7 +779,7 @@ export async function materializeGitFileSet(
           '-z',
           '--no-ext-diff',
           '--no-textconv',
-          target.baseSha,
+          target.mergeBaseSha,
           target.headSha,
           '--',
         ]),
@@ -829,7 +865,11 @@ export async function materializeGitFileSet(
       skippedFiles: sortSkips(skippedFiles),
     };
   } catch (error) {
-    cleanStagingRoot(stagingRoot);
+    try {
+      cleanStagingRoot(stagingRoot);
+    } catch {
+      // best-effort cleanup during error path; preserve the original error
+    }
     throw error;
   }
 }
