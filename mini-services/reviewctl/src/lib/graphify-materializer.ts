@@ -140,6 +140,10 @@ function safeGitEnvironment(): NodeJS.ProcessEnv {
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_SYSTEM: '/dev/null',
     GIT_EXTERNAL_DIFF: '/usr/bin/false',
+    // Definitive lazy-fetch block: Git documents this as "Setting this Boolean
+    // environment variable to true tells Git not to lazily fetch missing
+    // objects from the promisor remote on demand."
+    GIT_NO_LAZY_FETCH: '1',
     GIT_OPTIONAL_LOCKS: '0',
     GIT_PAGER: 'cat',
     GIT_TERMINAL_PROMPT: '0',
@@ -618,25 +622,52 @@ function partialCloneRejected(): GraphifyMaterializerError {
 /**
  * Reject partial/promise clones before any object read can trigger a lazy
  * fetch. A partial clone sets the local config extension
- * `extensions.partialclone=<remote>` (git stores the key lowercased). We list
- * local config — which always exits 0 for a valid repo, avoiding the exit-1
- * ambiguity of `git config --get` — and reject if the extension is present.
+ * `extensions.partialclone=<remote>` (git stores the key lowercased), and a
+ * promisor remote sets `remote.<name>.promisor=true` or
+ * `remote.<name>.partialclonefilter=<filter>`. Any of these enable lazy
+ * fetching from that remote.
+ *
+ * We list local config — which always exits 0 for a valid repo, avoiding the
+ * exit-1 ambiguity of `git config --get` — and reject if any promisor
+ * configuration is present. The probe is routed through `runGit` so that a
+ * runner that throws a raw error is subject to the same error sanitization as
+ * every other Git call (an unsanitized throw could leak repository paths or
+ * runner internals).
+ *
+ * Note: command-line `-c` overrides (such as our defensive
+ * `remote.origin.promisor=false`) do NOT appear in `git config --local --list`
+ * output, which reads only `.git/config`. The `promisor=true` pattern still
+ * matches only `=true`, so an explicit defensive `=false` written to local
+ * config would not be rejected.
  */
 async function assertNotPartialClone(
   git: GraphifyGitRunner,
   repositoryRoot: string,
 ): Promise<void> {
-  const result = await git.run({
-    argv: [...isolatedGitConfigArgv, 'config', '--local', '--list'],
-    cwd: repositoryRoot,
-    env: safeGitEnvironment(),
-    executable: git.executable,
-    shell: false,
-  });
-  const configText = result.stdout.toString('utf8');
-  if (/(^|\n)extensions\.partialclone=/iu.test(configText)) {
+  const output = await runGit(git, repositoryRoot, [
+    'config',
+    '--local',
+    '--list',
+  ]);
+  const configText = decodeGitBytes(output);
+  if (hasPromisorConfiguration(configText)) {
     throw partialCloneRejected();
   }
+}
+
+const promisorConfigPatterns: readonly RegExp[] = [
+  /(^|\n)extensions\.partialclone=/iu,
+  /(^|\n)remote\.[a-z0-9._-]+\.promisor=true/i,
+  /(^|\n)remote\.[a-z0-9._-]+\.partialclonefilter=/iu,
+];
+
+function hasPromisorConfiguration(configText: string): boolean {
+  for (const pattern of promisorConfigPatterns) {
+    if (pattern.test(configText)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function parseTreeEntry(

@@ -294,6 +294,7 @@ function assertCanonicalGitInvocation(
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_SYSTEM: '/dev/null',
     GIT_EXTERNAL_DIFF: '/usr/bin/false',
+    GIT_NO_LAZY_FETCH: '1',
     GIT_OPTIONAL_LOCKS: '0',
     GIT_PAGER: 'cat',
     GIT_TERMINAL_PROMPT: '0',
@@ -1767,6 +1768,114 @@ describe('Graphify Git materializer file boundary', () => {
     expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
   });
 
+  test('rejects repositories that declare a promisor remote in local config', async () => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    // Configure a non-origin remote as a promisor. The `-c remote.origin.promisor=false`
+    // override passed on the command line does not appear in `git config --local --list`,
+    // so this entry is the only promisor signal visible to the probe.
+    runGit(paths.repositoryRoot, [
+      'remote',
+      'add',
+      'cache',
+      'https://example.invalid/cache',
+    ]);
+    runGit(paths.repositoryRoot, [
+      'config',
+      '--local',
+      'remote.cache.promisor',
+      'true',
+    ]);
+
+    const error = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    }).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'PARTIAL_CLONE_REJECTED',
+      diagnostics: expect.any(String),
+    });
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('rejects repositories that declare a partialclonefilter in local config', async () => {
+    const paths = createPaths();
+    const target = createRealGitTarget(paths);
+    runGit(paths.repositoryRoot, [
+      'remote',
+      'add',
+      'cache',
+      'https://example.invalid/cache',
+    ]);
+    runGit(paths.repositoryRoot, [
+      'config',
+      '--local',
+      'remote.cache.partialclonefilter',
+      'blob:none',
+    ]);
+
+    const error = await materializeGitFileSet(target, createPolicy(paths), {
+      approvedPaths: ['src/app.ts'],
+      maxFiles: 10,
+    }).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'PARTIAL_CLONE_REJECTED',
+      diagnostics: expect.any(String),
+    });
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
+  test('sanitizes a raw error thrown by the runner during the partial-clone probe', async () => {
+    const paths = createPaths();
+    const sensitiveLeak = `RAW_SECRET_FROM_${paths.repositoryRoot}`;
+    const git: FakeGitRunner = {
+      executable: '/usr/bin/git',
+      invocations: [],
+      async run(invocation) {
+        git.invocations.push({
+          ...invocation,
+          argv: [...invocation.argv],
+          env: { ...invocation.env },
+        });
+        assertCanonicalGitInvocation(
+          invocation,
+          invocation.argv,
+          paths.repositoryRoot,
+          git.executable,
+        );
+        const argv = withoutGitIsolationPrefix(invocation.argv);
+        if (
+          argv[0] === 'config' &&
+          argv[1] === '--local' &&
+          argv[2] === '--list'
+        ) {
+          // A malicious or buggy runner throws a raw error that could leak
+          // internals. The probe must sanitize it via runGit, just like every
+          // other Git call.
+          throw new Error(sensitiveLeak);
+        }
+        throw new Error(`unexpected git argv: ${argv.join(' ')}`);
+      },
+    };
+
+    const error = await materializeGitFileSet(
+      createTarget(paths),
+      createPolicy(paths),
+      { git, approvedPaths: ['safe.txt'], maxFiles: 10 },
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(error).toMatchObject({
+      code: 'GIT_COMMAND_FAILED',
+      diagnostics: expect.any(String),
+    });
+    // The raw leak and the repository root must not surface.
+    expect(JSON.stringify(error)).not.toContain(sensitiveLeak);
+    expect(JSON.stringify(error)).not.toContain(paths.repositoryRoot);
+    expect(fs.readdirSync(paths.stagingRoot)).toEqual([]);
+  });
+
   test('neutralizes credential.helper and promisor via -c overrides on every git invocation', async () => {
     const paths = createPaths();
     const git = createFakeGitRunner({
@@ -1794,6 +1903,8 @@ describe('Graphify Git materializer file boundary', () => {
       expect(invocation.argv).toContain('remote.origin.promisor=false');
       // The environment never carries an executable credential helper.
       expect(invocation.env).not.toHaveProperty('GIT_CREDENTIAL_HELPER');
+      // Definitive lazy-fetch block on every invocation.
+      expect(invocation.env).toHaveProperty('GIT_NO_LAZY_FETCH', '1');
     }
   });
 
