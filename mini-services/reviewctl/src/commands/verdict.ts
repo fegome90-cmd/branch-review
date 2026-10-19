@@ -3,9 +3,14 @@ import path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
 import type { FinalResult, Verdict } from '../lib/constants.js';
+import {
+  evaluateReviewGate,
+  type AgentVerdict,
+} from '../lib/review-gate.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
 import {
   getCurrentRun,
+  getCurrentSha,
   getDiffStats,
   getRunDir,
   saveCurrentRun,
@@ -70,7 +75,7 @@ export async function verdictCommand(options: {
     );
 
     // Check for INVALID reports (higher priority than missing)
-    if (completionStatus.invalid.length > 0 && !options.allowIncomplete) {
+    if (completionStatus.invalid.length > 0) {
       spinner.warn(chalk.yellow('INVALID: Reports failed contract validation'));
 
       console.log(
@@ -106,6 +111,7 @@ export async function verdictCommand(options: {
         missing_agents: completionStatus.missing,
         invalid_agents: completionStatus.invalid,
         invalid_details: completionStatus.invalidDetails,
+        merge_ready: false,
         timestamp: new Date().toISOString(),
       };
       fs.writeFileSync(
@@ -117,7 +123,7 @@ export async function verdictCommand(options: {
       process.exit(2);
     }
 
-    if (completionStatus.missing.length > 0 && !options.allowIncomplete) {
+    if (completionStatus.missing.length > 0) {
       spinner.warn(chalk.yellow('INCOMPLETE: Missing required reports'));
 
       console.log(
@@ -136,9 +142,8 @@ export async function verdictCommand(options: {
           ),
         );
       }
-      console.log(
-        chalk.gray('\n  Or use --allow-incomplete to generate verdict anyway'),
-      );
+      console.log(chalk.gray('\n  --allow-incomplete cannot authorize an incomplete review'));
+
 
       // Write partial result
       const partialJson = {
@@ -149,6 +154,7 @@ export async function verdictCommand(options: {
         completed_agents: completionStatus.completed,
         missing_agents: completionStatus.missing,
         invalid_agents: completionStatus.invalid,
+        merge_ready: false,
         timestamp: new Date().toISOString(),
       };
       fs.writeFileSync(
@@ -166,8 +172,38 @@ export async function verdictCommand(options: {
     spinner.text = 'Aggregating agent reports...';
     const aggregated = aggregateReports(reportsDir, tasksDir, staticsDir, run);
 
-    // Generate verdict
-    const verdict = determineVerdict(aggregated, staticGate);
+    // Re-evaluate HEAD and every report after collection; a plan or report is
+    // never a merge authorization by itself.
+    const gateState = evaluateReviewGate({
+      expectedHead: run.head_sha_at_plan,
+      currentHead: getCurrentSha(),
+      driftStatus: run.drift_status,
+      driftOverrideUsed: Boolean(run.drift_override_used),
+      requiredAgents: completionStatus.required,
+      missingAgents: completionStatus.missing,
+      invalidAgents: completionStatus.invalid,
+      agentVerdicts: aggregated.agentVerdicts,
+      p0Count: aggregated.p0Total,
+      staticBlockers: staticGate.blocking.length,
+    });
+    if (gateState !== 'PASS' && gateState !== 'FAIL') {
+      spinner.warn(chalk.yellow(`${gateState}: Review is not eligible for PASS`));
+      fs.writeFileSync(
+        path.join(runDir, 'final.json'),
+        JSON.stringify({
+          run_id: run.run_id,
+          verdict: gateState,
+          merge_ready: false,
+          expected_head: run.head_sha_at_plan || null,
+          observed_head: getCurrentSha(),
+          required_agents: completionStatus.required,
+          agent_verdicts: aggregated.agentVerdicts,
+          timestamp: new Date().toISOString(),
+        }, null, 2),
+      );
+      process.exit(2);
+    }
+    const verdict: Verdict = gateState;
 
     // Generate final.md
     spinner.text = 'Generating final report...';
@@ -468,6 +504,7 @@ interface AggregatedResults {
   p2Total: number;
   warningsTotal: number;
   warningsByAgent: Record<string, number>;
+  agentVerdicts: Record<string, AgentVerdict>;
   agents: Record<
     string,
     { p0: number; p1: number; p2: number; status: string }
@@ -489,6 +526,7 @@ function aggregateReports(
     p2Total: 0,
     warningsTotal: 0,
     warningsByAgent: {},
+    agentVerdicts: {},
     agents: {},
     statics: {},
     topP0Findings: [],
@@ -519,10 +557,14 @@ function aggregateReports(
     }
 
     const normalizedAgentStatus = normalizeAgentReviewStatus(agentStatus);
+    result.agentVerdicts[agent] = 'UNKNOWN';
 
     if (fs.existsSync(resultPath) && normalizedAgentStatus === 'PASS') {
       try {
         const agentResult = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
+        const decision = agentResult.verdict?.result;
+        result.agentVerdicts[agent] =
+          decision === 'PASS' || decision === 'FAIL' ? decision : 'UNKNOWN';
         const stats = agentResult.statistics || {
           p0_count: 0,
           p1_count: 0,
@@ -590,16 +632,6 @@ function aggregateReports(
   return result;
 }
 
-function determineVerdict(
-  aggregated: AggregatedResults,
-  staticGate: StaticGateEvaluation,
-): Verdict {
-  // FAIL if any P0 findings or required static gates are not passing.
-  return aggregated.p0Total > 0 || staticGate.blocking.length > 0
-    ? 'FAIL'
-    : 'PASS';
-}
-
 function generateFinalMd(
   aggregated: AggregatedResults,
   verdict: Verdict,
@@ -609,6 +641,9 @@ function generateFinalMd(
 ): string {
   const timestamp = new Date().toISOString();
   const _diffStats = getDiffStats();
+  const rejectedAgents = Object.entries(aggregated.agentVerdicts)
+    .filter(([, decision]) => decision === 'FAIL')
+    .map(([name]) => name);
 
   let md = `# Final Review Report
 
@@ -624,8 +659,8 @@ function generateFinalMd(
 
 ${
   verdict === 'PASS'
-    ? 'The review completed successfully with no blocking agent or static issues. The changes are ready for merge.'
-    : 'The review found blocking issues that must be addressed before merge. Review P0 findings and required static gates below.'
+    ? 'The local review gate passed; GitHub checks and human approvals are still required before merge.'
+    : 'The review found blocking issues. Review P0 findings, agent verdicts, and required static gates below.'
 }
 
 ---
@@ -638,7 +673,7 @@ ${
 ${
   verdict === 'PASS'
     ? `No P0 (blocking) issues found and all required static checks passed. ${aggregated.p1Total} P1 and ${aggregated.p2Total} P2 issues were identified for follow-up.`
-    : `${aggregated.p0Total} P0 (blocking) issue(s) found.${
+    : `${aggregated.p0Total} P0 (blocking) issue(s) found. Agent FAIL: ${rejectedAgents.join(', ') || 'None'}.${
         staticGate.blocking.length > 0
           ? ` Required static blockers: ${staticGate.blocking
               .map((item) => `${item.tool}=${item.status}`)
@@ -871,6 +906,8 @@ function generateFinalJson(
       lines_removed: diffStats.removed,
     },
     agents: aggregated.agents,
+    agent_verdicts: aggregated.agentVerdicts,
+    merge_ready: false,
     statics: aggregated.statics,
     warnings_by_agent: aggregated.warningsByAgent,
     static_gate: {
