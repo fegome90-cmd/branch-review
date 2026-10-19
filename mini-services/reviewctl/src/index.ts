@@ -90,7 +90,7 @@ program
   .command('verdict')
   .description('Generate final verdict from all agent reports')
   .option('--json', 'Output as JSON only')
-  .option('--allow-incomplete', 'Generate verdict even with missing reports')
+  .option('--allow-incomplete', 'Diagnostic compatibility flag (does not bypass required reports)')
   .action(verdictCommand);
 
 // PR command
