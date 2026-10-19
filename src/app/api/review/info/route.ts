@@ -54,6 +54,7 @@ export async function GET() {
           'plan',
           'run',
           'ingest',
+          'doctor',
           'verdict',
           'pr',
           'merge',

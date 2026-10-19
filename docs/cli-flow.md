@@ -76,7 +76,8 @@ Important:
 
 - This is a separate workflow from `flow:branch`, `flow:commit`, and Husky hooks.
 - Current external use is safest in a disposable clone or worktree.
-- Artifact isolation is not fully hardened yet; avoid treating wrapper output as read-only.
+- Safe mode isolates artifact paths per canonical repository location, but it is not a filesystem sandbox or immutable store.
+- Prefer an isolated worktree for early adoption. Do not edit generated artifacts in place; verify the run ID and reviewed SHA before using them as evidence.
 
 ## PR comments workflow (gh wrapper)
 

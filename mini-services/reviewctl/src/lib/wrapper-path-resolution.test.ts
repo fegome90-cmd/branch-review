@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,6 +38,34 @@ afterEach(() => {
 });
 
 describe('reviewctl wrapper path resolution', () => {
+  it('rejects unsafe roots before resetting run state', () => {
+    const repoDir = createExternalWrapperRepo();
+    const wrapperPath = path.join(
+      repoDir, 'scripts', 'reviewctl-wrappers', 'reviewctl-wrapper.sh',
+    );
+
+    const result = spawnSync('bash', ['-lc',
+      `cd ${JSON.stringify(repoDir)} && export REVIEWCTL_ARTIFACT_ROOT=/ && source ${JSON.stringify(wrapperPath)} && reviewctl_full_workflow --reset`,
+    ], { encoding: 'utf-8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Unsafe artifact root');
+  });
+
+  it('rejects a failed artifact-root resolver instead of performing a reset', () => {
+    const repoDir = createExternalWrapperRepo();
+    const wrapperPath = path.join(
+      repoDir, 'scripts', 'reviewctl-wrappers', 'reviewctl-wrapper.sh',
+    );
+
+    const result = spawnSync('bash', ['-lc',
+      `cd ${JSON.stringify(repoDir)} && unset REVIEWCTL_CORE_CLI_PATH REVIEWCTL_SOURCE_REPO_ROOT REVIEWCTL_ARTIFACT_ROOT && source ${JSON.stringify(wrapperPath)} && reviewctl_full_workflow --reset`,
+    ], { encoding: 'utf-8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Unable to resolve artifact root');
+  });
+
   it('fails closed outside branch-review when REVIEWCTL_CORE_CLI_PATH is missing', () => {
     const repoDir = createExternalWrapperRepo();
     const wrapperPath = path.join(

@@ -128,6 +128,7 @@ export function buildPreflightReport(): PreflightReport {
 
 export async function doctorCommand(options: { json?: boolean }) {
   const report = buildPreflightReport();
+  if (!report.passed) process.exitCode = 1;
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2));

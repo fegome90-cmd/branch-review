@@ -64,6 +64,19 @@ resolve_artifact_root() {
     printf '%s' "$(_reviewctl_target_repo_root)"
 }
 
+_reviewctl_checked_artifact_root() {
+    local artifact_root
+    artifact_root="$(resolve_artifact_root)" || {
+        log_error "Unable to resolve artifact root; aborting"
+        return 1
+    }
+    if [[ -z "$artifact_root" || "$artifact_root" == "/" || "$artifact_root" != /* ]]; then
+        log_error "Unsafe artifact root; expected a non-root absolute directory"
+        return 1
+    fi
+    printf '%s' "$artifact_root"
+}
+
 resolve_core_cli_path() {
     if [[ -n "${REVIEWCTL_CORE_CLI_PATH:-}" ]]; then
         printf '%s' "$REVIEWCTL_CORE_CLI_PATH"
@@ -143,7 +156,7 @@ execute_local() {
     cli_path="$(resolve_core_cli_path)" || return 1
     local repo_path artifact_root
     repo_path="$(_reviewctl_target_repo_root)"
-    artifact_root="$(resolve_artifact_root)"
+    artifact_root="$(_reviewctl_checked_artifact_root)" || return 1
 
     if [[ ! -f "$cli_path" ]]; then
         log_error "CORE_CLI_PATH not found: $cli_path"
@@ -176,7 +189,7 @@ execute_cmd() {
     cli_path="$(resolve_core_cli_path)" || return 1
     local repo_path artifact_root
     repo_path="$(_reviewctl_target_repo_root)"
-    artifact_root="$(resolve_artifact_root)"
+    artifact_root="$(_reviewctl_checked_artifact_root)" || return 1
     export __REVIEWCTL_WRAPPER_LOOP=1
 
     local exit_code=0
@@ -263,7 +276,7 @@ reviewctl_status()  { execute_cmd "status" "$@"; }
 reviewctl_doctor()  { execute_cmd "doctor" "$@"; }
 reviewctl_full_workflow() {
     local artifact_root
-    artifact_root="$(resolve_artifact_root)"
+    artifact_root="$(_reviewctl_checked_artifact_root)" || return 1
     if [[ "${1:-}" == "--reset" ]]; then
         log_warn "Resetting run state..."
         rm -f "$artifact_root/_ctx/review_runs/current.json"

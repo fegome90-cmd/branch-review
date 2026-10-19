@@ -61,6 +61,23 @@ function _reviewctl_artifact_root
     end
 end
 
+function _reviewctl_checked_artifact_root
+    set -l root (_reviewctl_artifact_root)
+    if test $status -ne 0
+        _reviewctl_log_error "Unable to resolve artifact root; aborting"
+        return 1
+    end
+    if test -z "$root"; or test "$root" = "/"
+        _reviewctl_log_error "Unsafe artifact root; expected a non-root absolute directory"
+        return 1
+    end
+    if not string match -q '/*' -- "$root"
+        _reviewctl_log_error "Unsafe artifact root; expected an absolute directory"
+        return 1
+    end
+    echo "$root"
+end
+
 function _reviewctl_core_cli_path
     if set -q REVIEWCTL_CORE_CLI_PATH
         echo $REVIEWCTL_CORE_CLI_PATH
@@ -139,7 +156,10 @@ function _reviewctl_execute_local
         return 1
     end
     set -l repo_path (_reviewctl_target_repo_root)
-    set -l artifact_root (_reviewctl_artifact_root)
+    set -l artifact_root (_reviewctl_checked_artifact_root)
+    if test $status -ne 0
+        return 1
+    end
 
     if not test -f "$cli_path"
         _reviewctl_log_error "CORE_CLI_PATH not found: $cli_path"
@@ -165,7 +185,10 @@ function _reviewctl_exec
         return 1
     end
     set -l repo_path (_reviewctl_target_repo_root)
-    set -l artifact_root (_reviewctl_artifact_root)
+    set -l artifact_root (_reviewctl_checked_artifact_root)
+    if test $status -ne 0
+        return 1
+    end
 
     if set -q __REVIEWCTL_WRAPPER_LOOP
         _reviewctl_execute_local $cmd $args
@@ -247,7 +270,10 @@ end
 function reviewctl_status;  _reviewctl_exec status $argv; end
 function reviewctl_doctor;  _reviewctl_exec doctor $argv; end
 function reviewctl_full_workflow
-    set -l artifact_root (_reviewctl_artifact_root)
+    set -l artifact_root (_reviewctl_checked_artifact_root)
+    if test $status -ne 0
+        return 1
+    end
     if test "$argv[1]" = "--reset"
         _reviewctl_log_warn "Resetting run state..."
         rm -f "$artifact_root/_ctx/review_runs/current.json"

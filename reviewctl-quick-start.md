@@ -69,10 +69,11 @@ export BRANCH_REVIEW_API="http://localhost:3001"
 
 ## Safe adoption note
 
-Current wrappers were designed first for `branch-review` itself. External-safe
-path resolution and artifact isolation are being hardened separately. Until that
-lands, prefer a disposable clone or worktree and keep `REVIEWCTL_CORE_CLI_PATH`
-explicit.
+External-safe mode resolves distinct artifact roots for repositories with
+identical names and refuses missing or unsafe roots before resetting run state.
+This is path isolation, **not** a sandbox, immutable output store, or proof of
+concurrent-writer safety. Use a disposable clone/worktree for untrusted changes,
+keep `REVIEWCTL_CORE_CLI_PATH` explicit, and verify run/HEAD identity.
 
 ## Main commands
 
