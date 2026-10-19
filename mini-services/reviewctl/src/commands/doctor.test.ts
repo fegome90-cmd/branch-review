@@ -1,30 +1,28 @@
-import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { doctorCommand } from './doctor';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { describe, expect, it } from 'bun:test';
 
-const originalCliPath = process.env.REVIEWCTL_CORE_CLI_PATH;
-const originalExitCode = process.exitCode;
-
-afterEach(() => {
-  if (originalCliPath === undefined) {
-    delete process.env.REVIEWCTL_CORE_CLI_PATH;
-  } else {
-    process.env.REVIEWCTL_CORE_CLI_PATH = originalCliPath;
-  }
-  process.exitCode = originalExitCode;
-});
+const cliPath = path.resolve('mini-services/reviewctl/src/index.ts');
 
 describe('reviewctl doctor exit status', () => {
   for (const json of [true, false]) {
-    it(`returns nonzero on failed preflight (json=${json})`, async () => {
-      process.env.REVIEWCTL_CORE_CLI_PATH = '/__reviewctl_missing__/index.ts';
-      process.exitCode = 0;
-      const log = spyOn(console, 'log').mockImplementation(() => {});
-      try {
-        await doctorCommand({ json });
-        expect(process.exitCode).toBe(1);
-      } finally {
-        log.mockRestore();
-      }
+    it(`returns nonzero on failed preflight (json=${json})`, () => {
+      const result = spawnSync(
+        'bun',
+        [cliPath, 'doctor', ...(json ? ['--json'] : [])],
+        {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            REVIEWCTL_CORE_CLI_PATH: '/__reviewctl_missing__/index.ts',
+          },
+          encoding: 'utf-8',
+        },
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(json ? '"passed": false' : 'Doctor failed');
     });
   }
 });
