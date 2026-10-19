@@ -120,4 +120,50 @@ describe('reviewctl verdict integration', () => {
     expect(final.verdict).toBe('PASS');
     expect(final.merge_ready).toBe(false);
   });
+  it('blocks a required static SKIP without an applicability reason', () => {
+    const f = fixture('PASS');
+    fs.writeFileSync(
+      path.join(f.dir, 'plan.json'),
+      JSON.stringify({
+        required_agents: ['code-reviewer'],
+        optional_agents: [],
+        statics: [{ name: 'ruff', required: true, reason: 'Python gate' }],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(f.dir, 'statics', 'ruff_status.json'),
+      JSON.stringify({ status: 'SKIP' }),
+    );
+
+    const output = verdict(f.cwd);
+    expect(output.status).toBe(1);
+    const final = JSON.parse(fs.readFileSync(path.join(f.dir, 'final.json'), 'utf-8'));
+    expect(final.verdict).toBe('FAIL');
+    expect(final.static_gate.blocking).toEqual([
+      expect.objectContaining({ tool: 'ruff', status: 'UNKNOWN' }),
+    ]);
+  });
+
+  it('accepts an explicitly justified required static SKIP', () => {
+    const f = fixture('PASS');
+    fs.writeFileSync(
+      path.join(f.dir, 'plan.json'),
+      JSON.stringify({
+        required_agents: ['code-reviewer'],
+        optional_agents: [],
+        statics: [{ name: 'ruff', required: true, reason: 'Python gate' }],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(f.dir, 'statics', 'ruff_status.json'),
+      JSON.stringify({ status: 'SKIP', reason: 'No Python changes in diff' }),
+    );
+
+    const output = verdict(f.cwd);
+    expect(output.status).toBe(0);
+    const final = JSON.parse(fs.readFileSync(path.join(f.dir, 'final.json'), 'utf-8'));
+    expect(final.verdict).toBe('PASS');
+    expect(final.static_gate.blocking).toEqual([]);
+  });
+
 });
