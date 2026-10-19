@@ -449,15 +449,22 @@ function evaluateRequiredStatics(
     try {
       const statusJson = JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
       const status = normalizeRequiredStaticStatus(statusJson.status);
-      const reason =
-        statusJson.execution?.reason ||
-        statusJson.reason ||
-        `Status loaded from ${tool}_status.json`;
+      const suppliedReason = statusJson.execution?.reason || statusJson.reason;
+      if (
+        (status === 'SKIP' || status === 'NOT_APPLICABLE') &&
+        (typeof suppliedReason !== 'string' || !suppliedReason.trim())
+      ) {
+        return {
+          tool,
+          status: 'UNKNOWN' as RequiredStaticStatus,
+          reason: 'Required skipped control has no explicit applicability reason',
+        };
+      }
 
       return {
         tool,
         status,
-        reason,
+        reason: suppliedReason || `Status loaded from ${tool}_status.json`,
       };
     } catch {
       return {
