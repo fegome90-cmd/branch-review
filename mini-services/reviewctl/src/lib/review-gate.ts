@@ -23,9 +23,7 @@ export function evaluateReviewGate(input: ReviewGateInput): ReviewGateState {
     input.currentHead === 'unknown' ||
     input.expectedHead !== input.currentHead ||
     input.driftOverrideUsed ||
-    ['DRIFT_RISK', 'DRIFT_CONFIRMED', 'DRIFT_OVERRIDE'].includes(
-      input.driftStatus ?? '',
-    )
+    input.driftStatus !== 'ALIGNED'
   ) {
     return 'STALE';
   }
