@@ -1,14 +1,23 @@
-// Constants and configuration for reviewctl
+import path from 'node:path';
+import { getReviewctlArtifactRoot } from '../../../../shared/reviewctl-artifact-root.js';
 
 export const PROJECT_ROOT = process.cwd();
-export const CTX_DIR = `${PROJECT_ROOT}/_ctx`;
-export const REVIEW_RUNS_DIR = `${CTX_DIR}/review_runs`;
-export const EXPLORE_DIR = `${PROJECT_ROOT}/explore`;
-export const DOCS_DIR = `${PROJECT_ROOT}/docs`;
-export const PLANS_DIR = `${DOCS_DIR}/plans`;
-export const CLAUDE_DIR = `${PROJECT_ROOT}/.claude`;
-export const CLAUDE_PLANS_DIR = `${CLAUDE_DIR}/plans`;
-export const TEMPLATES_DIR = `${CLAUDE_DIR}/templates`;
+export const SAFE_MODE = process.env.REVIEWCTL_SAFE_MODE === '1';
+
+export const ARTIFACT_ROOT = process.env.REVIEWCTL_ARTIFACT_ROOT
+  ? path.resolve(process.env.REVIEWCTL_ARTIFACT_ROOT)
+  : SAFE_MODE
+    ? getReviewctlArtifactRoot(PROJECT_ROOT)
+    : PROJECT_ROOT;
+
+export const CTX_DIR = path.join(ARTIFACT_ROOT, '_ctx');
+export const REVIEW_RUNS_DIR = path.join(CTX_DIR, 'review_runs');
+export const EXPLORE_DIR = path.join(ARTIFACT_ROOT, 'explore');
+export const DOCS_DIR = path.join(PROJECT_ROOT, 'docs');
+export const PLANS_DIR = path.join(DOCS_DIR, 'plans');
+export const CLAUDE_DIR = path.join(PROJECT_ROOT, '.claude');
+export const CLAUDE_PLANS_DIR = path.join(CLAUDE_DIR, 'plans');
+export const TEMPLATES_DIR = path.join(CLAUDE_DIR, 'templates');
 
 // Anti-loop limits
 export const MAX_AGENTS = 3;
@@ -207,6 +216,17 @@ export interface FinalResult {
     reports: string[];
     final_json: string;
   };
+}
+
+export interface PreflightCheck {
+  name: string;
+  status: 'PASS' | 'FAIL' | 'WARN';
+  detail: string;
+}
+
+export interface PreflightReport {
+  passed: boolean;
+  checks: readonly PreflightCheck[];
 }
 
 // Precondition errors

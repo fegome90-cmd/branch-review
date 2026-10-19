@@ -6,6 +6,7 @@ import {
   DOCS_DIR,
   PLANS_DIR,
   type PlanStatus,
+  REVIEW_RUNS_DIR,
 } from './constants.js';
 import { getBaseBranch, getCurrentBranch, getCurrentSha } from './utils.js';
 
@@ -185,7 +186,7 @@ function scorePlan(filePath: string, identifiers: string[]): number {
 
 // Save resolved plan to run
 export function savePlanRef(runId: string, planPath: string): void {
-  const runDir = path.join(process.cwd(), '_ctx', 'review_runs', runId);
+  const runDir = path.join(REVIEW_RUNS_DIR, runId);
   const planRefPath = path.join(runDir, 'plan_ref.txt');
 
   if (!fs.existsSync(runDir)) {

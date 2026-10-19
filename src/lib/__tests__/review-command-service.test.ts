@@ -115,6 +115,8 @@ describe('Multi-repo validation', () => {
   });
 
   it('rejects non-existent repo path with REPO_NOT_FOUND', async () => {
+    const originalEnv = process.env.ALLOWED_REPOS;
+    process.env.ALLOWED_REPOS = tempDir;
     const service = new ReviewCommandService(async () => ({
       ok: true,
       output: 'ok',
@@ -125,10 +127,12 @@ describe('Multi-repo validation', () => {
     try {
       await service.execute(validPayload, {
         clientId: 'client',
-        repoPath: join(tmpdir(), 'nonexistent-path-12345'),
+        repoPath: join(tempDir, 'nonexistent-path-12345'),
       });
     } catch (error) {
       capturedError = error;
+    } finally {
+      process.env.ALLOWED_REPOS = originalEnv;
     }
 
     expect(capturedError).toBeInstanceOf(ReviewCommandError);
@@ -141,6 +145,8 @@ describe('Multi-repo validation', () => {
     const filePath = join(tempDir, 'not-a-directory.txt');
     writeFileSync(filePath, 'test content');
 
+    const originalEnv = process.env.ALLOWED_REPOS;
+    process.env.ALLOWED_REPOS = tempDir;
     const service = new ReviewCommandService(async () => ({
       ok: true,
       output: 'ok',
@@ -155,6 +161,8 @@ describe('Multi-repo validation', () => {
       });
     } catch (error) {
       capturedError = error;
+    } finally {
+      process.env.ALLOWED_REPOS = originalEnv;
     }
 
     expect(capturedError).toBeInstanceOf(ReviewCommandError);
@@ -193,7 +201,7 @@ describe('Multi-repo validation', () => {
     expect((capturedError as ReviewCommandError).code).toBe('REPO_NOT_ALLOWED');
   });
 
-  it('allows symlink to existing directory', async () => {
+  it('fails closed when repo policy is missing', async () => {
     // Create symlink
     symlinkSync(realDir, symlinkDir);
 
@@ -208,16 +216,25 @@ describe('Multi-repo validation', () => {
       timedOut: false,
     }));
 
-    // Without whitelist, symlink should be allowed
     const originalEnv = process.env.ALLOWED_REPOS;
     process.env.ALLOWED_REPOS = '';
 
     try {
-      const result = await service.execute(validPayload, {
-        clientId: 'client',
-        repoPath: symlinkDir,
-      });
-      expect(result.output).toBe('ok');
+      let capturedError: unknown;
+      try {
+        await service.execute(validPayload, {
+          clientId: 'client',
+          repoPath: symlinkDir,
+        });
+      } catch (error) {
+        capturedError = error;
+      }
+
+      expect(capturedError).toBeInstanceOf(ReviewCommandError);
+      expect((capturedError as ReviewCommandError).status).toBe(503);
+      expect((capturedError as ReviewCommandError).code).toBe(
+        'REPO_POLICY_MISSING',
+      );
     } finally {
       process.env.ALLOWED_REPOS = originalEnv;
     }
@@ -247,7 +264,7 @@ describe('Multi-repo validation', () => {
       let capturedError: unknown;
       try {
         // Use a path outside the whitelist (platform-independent)
-        const outsidePath = join(tmpdir(), 'outside-whitelist-' + Date.now());
+        const outsidePath = join(tmpdir(), `outside-whitelist-${Date.now()}`);
         await service.execute(validPayload, {
           clientId: 'client',
           repoPath: outsidePath,
@@ -296,6 +313,38 @@ describe('Multi-repo validation', () => {
       expect((capturedError as ReviewCommandError).status).toBe(403);
       expect((capturedError as ReviewCommandError).code).toBe(
         'REPO_NOT_ALLOWED',
+      );
+    } finally {
+      process.env.ALLOWED_REPOS = originalEnv;
+    }
+  });
+
+  it('passes safe-mode env overrides to the runner for external repos', async () => {
+    const originalEnv = process.env.ALLOWED_REPOS;
+    process.env.ALLOWED_REPOS = tempDir;
+
+    let capturedEnv: Record<string, string> | undefined;
+    const service = new ReviewCommandService(
+      async (_cliArgs, _timeout, _cwd, envOverrides) => {
+        capturedEnv = envOverrides;
+        return {
+          ok: true,
+          output: 'ok',
+          timedOut: false,
+        };
+      },
+    );
+
+    try {
+      const result = await service.execute(validPayload, {
+        clientId: 'client',
+        repoPath: realDir,
+      });
+
+      expect(result.output).toBe('ok');
+      expect(capturedEnv?.REVIEWCTL_SAFE_MODE).toBe('1');
+      expect(capturedEnv?.REVIEWCTL_ARTIFACT_ROOT).toContain(
+        'reviewctl-artifacts',
       );
     } finally {
       process.env.ALLOWED_REPOS = originalEnv;

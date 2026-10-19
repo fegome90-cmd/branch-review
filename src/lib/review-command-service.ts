@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { getReviewctlArtifactRoot } from '../../shared/reviewctl-artifact-root';
 
 const COMMAND_TIMEOUT_MS = 120000;
 const MAX_OUTPUT_CHARS = 12000;
@@ -19,6 +20,7 @@ export const ALLOWED_COMMANDS = [
   'merge',
   'cleanup',
   'verdict',
+  'doctor',
 ] as const;
 
 // PR command allows longer body (up to 10000 chars)
@@ -51,6 +53,7 @@ export const commandSchema = z.discriminatedUnion('command', [
       'merge',
       'cleanup',
       'verdict',
+      'doctor',
     ]),
     args: genericArgsSchema,
   }),
@@ -85,6 +88,7 @@ type CommandRunner = (
   cliArgs: string[],
   timeoutMs: number,
   cwd?: string,
+  envOverrides?: Record<string, string>,
 ) => Promise<CommandResult>;
 
 type ExecuteContext = {
@@ -180,6 +184,7 @@ function validateRepoExists(repoPath: string): {
  * If ALLOWED_REPOS is empty, all paths are allowed (dev mode).
  */
 function validateRepoPath(repoPath: string): {
+  code?: string;
   valid: boolean;
   error?: string;
 } {
@@ -190,6 +195,7 @@ function validateRepoPath(repoPath: string): {
   // Note: path.resolve() normalizes away .. so we check the input
   if (repoPath.includes('..')) {
     return {
+      code: 'REPO_NOT_ALLOWED',
       valid: false,
       error: 'Invalid path: relative traversal not allowed',
     };
@@ -199,9 +205,13 @@ function validateRepoPath(repoPath: string): {
   const allowedRepos =
     process.env.ALLOWED_REPOS?.split(path.delimiter).filter(Boolean) || [];
 
-  // If no whitelist configured, allow all (dev mode)
+  // If no whitelist configured, fail closed for external multi-repo API execution
   if (allowedRepos.length === 0) {
-    return { valid: true };
+    return {
+      code: 'REPO_POLICY_MISSING',
+      valid: false,
+      error: 'ALLOWED_REPOS is required for external multi-repo API execution',
+    };
   }
 
   // Resolve symlinks for comparison
@@ -228,12 +238,18 @@ function validateRepoPath(repoPath: string): {
     // Ensure true path boundary: exact match or prefix with separator
     return (
       resolvedToCheck === allowedReal ||
-      resolvedToCheck.startsWith(allowedReal + path.sep)
+      resolvedToCheck.startsWith(allowedReal + path.sep) ||
+      resolved === resolvedAllowed ||
+      resolved.startsWith(resolvedAllowed + path.sep)
     );
   });
 
   if (!isAllowed) {
-    return { valid: false, error: 'Repository path not in whitelist' };
+    return {
+      code: 'REPO_NOT_ALLOWED',
+      valid: false,
+      error: 'Repository path not in whitelist',
+    };
   }
 
   return { valid: true };
@@ -243,10 +259,15 @@ async function runReviewctl(
   cliArgs: string[],
   timeoutMs: number,
   cwd: string = process.cwd(),
+  envOverrides: Record<string, string> = {},
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn('bun', cliArgs, {
       cwd,
+      env: {
+        ...process.env,
+        ...envOverrides,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -323,8 +344,8 @@ export class ReviewCommandService {
         const validation = validateRepoPath(context.repoPath);
         if (!validation.valid) {
           throw new ReviewCommandError(
-            403,
-            'REPO_NOT_ALLOWED',
+            validation.code === 'REPO_POLICY_MISSING' ? 503 : 403,
+            validation.code || 'REPO_NOT_ALLOWED',
             validation.error || 'Repository path not allowed',
             {
               requestedPath: context.repoPath,
@@ -356,7 +377,19 @@ export class ReviewCommandService {
         'index.ts',
       );
       const cliArgs = [cliPath, payload.command, ...toCliArgs(payload.args)];
-      const result = await this.runner(cliArgs, COMMAND_TIMEOUT_MS, targetRepo);
+      const envOverrides: Record<string, string> =
+        context.repoPath && targetRepo !== process.cwd()
+          ? {
+              REVIEWCTL_SAFE_MODE: '1',
+              REVIEWCTL_ARTIFACT_ROOT: getReviewctlArtifactRoot(targetRepo),
+            }
+          : {};
+      const result = await this.runner(
+        cliArgs,
+        COMMAND_TIMEOUT_MS,
+        targetRepo,
+        envOverrides,
+      );
       const output = trimOutput(result.output || '');
 
       if (!result.ok && result.timedOut) {
