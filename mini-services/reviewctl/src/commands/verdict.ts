@@ -174,9 +174,10 @@ export async function verdictCommand(options: {
 
     // Re-evaluate HEAD and every report after collection; a plan or report is
     // never a merge authorization by itself.
+    const observedHead = getCurrentSha();
     const gateState = evaluateReviewGate({
       expectedHead: run.head_sha_at_plan,
-      currentHead: getCurrentSha(),
+      currentHead: observedHead,
       driftStatus: run.drift_status,
       driftOverrideUsed: Boolean(run.drift_override_used),
       requiredAgents: completionStatus.required,
@@ -195,7 +196,7 @@ export async function verdictCommand(options: {
           verdict: gateState,
           merge_ready: false,
           expected_head: run.head_sha_at_plan || null,
-          observed_head: getCurrentSha(),
+          observed_head: observedHead,
           required_agents: completionStatus.required,
           agent_verdicts: aggregated.agentVerdicts,
           timestamp: new Date().toISOString(),
@@ -275,7 +276,7 @@ export async function verdictCommand(options: {
       );
 
       if (verdict === 'PASS') {
-        console.log(chalk.gray('\n  Next: reviewctl merge'));
+        console.log(chalk.gray('\n  Next: verify GitHub checks and human approvals before flow:merge'));
       } else {
         console.log(
           chalk.yellow(
@@ -852,8 +853,11 @@ ${
           (item, index) =>
             `${aggregated.topP0Findings.length + index + 1}. Resolve static gate ${item.tool} (${item.status})`,
         ),
+        ...rejectedAgents.map(
+          (name) => `Investigate agent FAIL: ${name}`,
+        ),
       ].join('\n')
-    : '1. No blocking issues - ready for merge'
+    : '1. Local review passed; verify GitHub CI and obtain required human approvals before merge'
 }
 
 ### Post-Merge (Recommended)
