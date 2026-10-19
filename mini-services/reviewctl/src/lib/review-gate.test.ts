@@ -85,6 +85,16 @@ const cases: Array<{
     overrides: { driftStatus: 'DRIFT_RISK' },
   },
   {
+    name: 'missing drift evidence blocks',
+    expected: 'STALE',
+    overrides: { driftStatus: undefined },
+  },
+  {
+    name: 'unknown drift state blocks',
+    expected: 'STALE',
+    overrides: { driftStatus: 'UNKNOWN' },
+  },
+  {
     name: 'invalid numeric counts fail closed',
     expected: 'ERROR',
     overrides: { p0Count: Number.NaN },
