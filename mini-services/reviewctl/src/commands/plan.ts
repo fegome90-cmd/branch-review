@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import type { ReviewLevel, ReviewType } from '../lib/constants.js';
 import { resolvePlan, savePlanRef } from '../lib/plan-resolver.js';
+import { assertReviewBaseUnchanged, getReviewDiffSnapshot } from '../lib/review-diff.js';
 import {
   detectSensitiveZones,
   detectStack,
@@ -12,10 +13,8 @@ import {
 } from '../lib/stack-detector.js';
 import {
   computeDigest,
-  getChangedFiles,
   getCurrentRun,
   getCurrentSha,
-  getDiffStats,
   getRunDir,
   saveCurrentRun,
   validatePreconditions,
@@ -56,6 +55,8 @@ export async function planCommand(options: {
       spinner.fail('No active review run. Run: reviewctl init');
       process.exit(1);
     }
+    const snapshot = getReviewDiffSnapshot(run.base_branch);
+    assertReviewBaseUnchanged(snapshot, run.base_sha);
 
     // Resolve plan if not set
     if (run.plan_status !== 'FOUND' || options.planPath) {
@@ -91,9 +92,9 @@ export async function planCommand(options: {
 
     spinner.text = 'Detecting stack and determining review parameters...';
     const stack = await detectStack();
-    const changedFiles = getChangedFiles();
+    const changedFiles = snapshot.changedFiles;
     const sensitiveZones = detectSensitiveZones(changedFiles);
-    const diffStats = getDiffStats();
+    const diffStats = snapshot.stats;
 
     // Determine level and type
     let level: ReviewLevel = options.level as ReviewLevel;
@@ -142,7 +143,11 @@ export async function planCommand(options: {
 
     // Update run status + digest snapshots
     run.status = 'planning';
-    run.head_sha_at_plan = getCurrentSha();
+    const headAtPlan = getCurrentSha();
+    if (!snapshot.headSha.startsWith(headAtPlan)) {
+      throw new Error('DIFF_SCOPE_CHANGED: HEAD changed since planning snapshot.');
+    }
+    run.head_sha_at_plan = headAtPlan;
     run.plan_digest = computeDigest(planContent);
     saveCurrentRun(run);
 
