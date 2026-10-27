@@ -55,7 +55,11 @@ function invoke(cwd: string, ...args: string[]) {
 
 function check(cwd: string, ...args: string[]) {
   const result = invoke(cwd, ...args);
-  expect(result.status).toBe(0);
+  if (result.status !== 0) {
+    throw new Error(
+      `reviewctl ${args.join(' ')} exit=${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+  }
   return result;
 }
 
