@@ -283,6 +283,29 @@ describe('Multi-repo validation', () => {
     }
   });
 
+  it('rejects symlink escapes outside ALLOWED_REPOS', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'reviewctl-outside-'));
+    const allowed = join(tempDir, 'allowed');
+    mkdirSync(allowed);
+    const link = join(allowed, 'escape');
+    symlinkSync(outside, link);
+    const previous = process.env.ALLOWED_REPOS;
+    process.env.ALLOWED_REPOS = allowed;
+    const service = new ReviewCommandService(async () => ({
+      ok: true,
+      output: 'unexpected execution',
+      timedOut: false,
+    }));
+    try {
+      await expect(
+        service.execute(validPayload, { clientId: 'escape', repoPath: link }),
+      ).rejects.toMatchObject({ status: 403, code: 'REPO_NOT_ALLOWED' });
+    } finally {
+      process.env.ALLOWED_REPOS = previous;
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it('handles symlink outside whitelist', async () => {
     // Create symlink
     symlinkSync(realDir, symlinkDir);

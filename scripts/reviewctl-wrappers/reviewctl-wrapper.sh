@@ -64,13 +64,39 @@ resolve_artifact_root() {
     printf '%s' "$(_reviewctl_target_repo_root)"
 }
 
+_reviewctl_normalize_absolute_path() {
+    local original="$1" part normalized="/"
+    local -a parts=()
+    local IFS='/'
+    read -r -a parts <<< "$original"
+    for part in "${parts[@]}"; do
+        case "$part" in
+            ""|.) ;;
+            ..)
+                normalized="${normalized%/*}"
+                [[ -n "$normalized" ]] || normalized="/"
+                ;;
+            *) normalized="${normalized%/}/$part" ;;
+        esac
+    done
+    printf '%s' "$normalized"
+}
+
 _reviewctl_checked_artifact_root() {
     local artifact_root
     artifact_root="$(resolve_artifact_root)" || {
         log_error "Unable to resolve artifact root; aborting"
         return 1
     }
-    if [[ -z "$artifact_root" || "$artifact_root" == "/" || "$artifact_root" != /* ]]; then
+    if [[ -z "$artifact_root" || "$artifact_root" != /* ]]; then
+        log_error "Unsafe artifact root; expected a non-root absolute directory"
+        return 1
+    fi
+    artifact_root="$(_reviewctl_normalize_absolute_path "$artifact_root")" || return 1
+    if [[ -d "$artifact_root" ]]; then
+        artifact_root="$(cd "$artifact_root" && pwd -P)" || return 1
+    fi
+    if [[ "$artifact_root" == "/" ]]; then
         log_error "Unsafe artifact root; expected a non-root absolute directory"
         return 1
     fi

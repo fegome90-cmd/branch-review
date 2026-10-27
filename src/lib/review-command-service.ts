@@ -193,7 +193,7 @@ function validateRepoPath(repoPath: string): {
 
   // Check for suspicious patterns in ORIGINAL path (before resolve)
   // Note: path.resolve() normalizes away .. so we check the input
-  if (repoPath.includes('..')) {
+  if (repoPath.split(/[\\/]/).includes('..')) {
     return {
       code: 'REPO_NOT_ALLOWED',
       valid: false,
@@ -238,9 +238,7 @@ function validateRepoPath(repoPath: string): {
     // Ensure true path boundary: exact match or prefix with separator
     return (
       resolvedToCheck === allowedReal ||
-      resolvedToCheck.startsWith(allowedReal + path.sep) ||
-      resolved === resolvedAllowed ||
-      resolved.startsWith(resolvedAllowed + path.sep)
+      resolvedToCheck.startsWith(allowedReal + path.sep)
     );
   });
 

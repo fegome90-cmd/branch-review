@@ -121,7 +121,7 @@ export async function GET() {
       bodyField: 'repoPath',
       priority: 'body > header > default',
       security:
-        'ALLOWED_REPOS env var whitelist (colon-separated paths); external multi-repo API calls fail closed when missing',
+        'ALLOWED_REPOS whitelist (path.delimiter-separated: colon on POSIX, semicolon on Windows); external API calls fail closed when missing',
       symlinkResolution: true,
       existenceCheck: true,
       example: {

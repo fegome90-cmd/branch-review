@@ -185,4 +185,22 @@ describe('reviewctl wrapper path resolution', () => {
 
     expect(output).toContain('"passed": true');
   });
+  it('rejects artifact root paths that normalize to slash', () => {
+    const repoDir = createExternalWrapperRepo();
+    const wrapperPath = path.join(repoDir, 'scripts', 'reviewctl-wrappers', 'reviewctl-wrapper.sh');
+    const cmd = 'cd ' + JSON.stringify(repoDir) + ' && export REVIEWCTL_ARTIFACT_ROOT=/tmp/.. && source ' + JSON.stringify(wrapperPath) + ' && _reviewctl_checked_artifact_root';
+    const result = spawnSync('bash', ['-lc', cmd], { encoding: 'utf-8' });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Unsafe artifact root');
+  });
+
+  it('normalizes safe artifact roots containing parent segments', () => {
+    const repoDir = createExternalWrapperRepo();
+    const wrapperPath = path.join(repoDir, 'scripts', 'reviewctl-wrappers', 'reviewctl-wrapper.sh');
+    const cmd = 'cd ' + JSON.stringify(repoDir) + ' && export REVIEWCTL_ARTIFACT_ROOT=/tmp/../var/reviewctl && source ' + JSON.stringify(wrapperPath) + ' && _reviewctl_checked_artifact_root';
+    const result = spawnSync('bash', ['-lc', cmd], { encoding: 'utf-8' });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('/var/reviewctl');
+  });
+
 });

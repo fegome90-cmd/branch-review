@@ -71,19 +71,21 @@ function checkTokenMode(): PreflightCheck {
 
 function checkArtifactRoot(): PreflightCheck {
   const explicit = process.env.REVIEWCTL_ARTIFACT_ROOT;
-  const detail = explicit
-    ? `explicit artifact root: ${ARTIFACT_ROOT}`
-    : SAFE_MODE
-      ? `safe mode default artifact root: ${ARTIFACT_ROOT}`
-      : `artifacts will be written in repo root: ${PROJECT_ROOT}`;
+  const unsafeRoot = ARTIFACT_ROOT === path.parse(ARTIFACT_ROOT).root;
+  const detail = unsafeRoot
+    ? `unsafe artifact root: ${ARTIFACT_ROOT}`
+    : explicit
+      ? `explicit artifact root: ${ARTIFACT_ROOT}`
+      : SAFE_MODE
+        ? `safe mode default artifact root: ${ARTIFACT_ROOT}`
+        : `artifacts will be written in repo root: ${PROJECT_ROOT}`;
 
   return {
     name: 'artifact-root',
-    status: SAFE_MODE && !explicit ? 'WARN' : 'PASS',
+    status: unsafeRoot ? 'FAIL' : SAFE_MODE && !explicit ? 'WARN' : 'PASS',
     detail,
   };
 }
-
 function checkRepoPolicy(): PreflightCheck {
   const allowedRepos = process.env.ALLOWED_REPOS?.split(path.delimiter).filter(
     Boolean,

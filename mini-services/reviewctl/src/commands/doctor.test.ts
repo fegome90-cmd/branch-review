@@ -25,4 +25,19 @@ describe('reviewctl doctor exit status', () => {
       expect(result.stdout).toContain(json ? '"passed": false' : 'Doctor failed');
     });
   }
+  it('rejects artifact roots resolving to the filesystem root', () => {
+    const result = spawnSync('bun', [cliPath, 'doctor', '--json'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        REVIEWCTL_CORE_CLI_PATH: cliPath,
+        REVIEWCTL_ARTIFACT_ROOT: '/tmp/..',
+      },
+      encoding: 'utf-8',
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('unsafe artifact root: /');
+  });
+
 });

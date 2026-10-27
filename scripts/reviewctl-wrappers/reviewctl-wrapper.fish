@@ -67,15 +67,26 @@ function _reviewctl_checked_artifact_root
         _reviewctl_log_error "Unable to resolve artifact root; aborting"
         return 1
     end
-    if test -z "$root"; or test "$root" = "/"
-        _reviewctl_log_error "Unsafe artifact root; expected a non-root absolute directory"
-        return 1
-    end
-    if not string match -q '/*' -- "$root"
+    if test -z "$root"; or not string match -q '/*' -- "$root"
         _reviewctl_log_error "Unsafe artifact root; expected an absolute directory"
         return 1
     end
-    echo "$root"
+    set -l normalized (path normalize -- "$root")
+    if test $status -ne 0; or test -z "$normalized"
+        _reviewctl_log_error "Unable to normalize artifact root"
+        return 1
+    end
+    if test -d "$normalized"
+        set -l physical (realpath "$normalized" 2>/dev/null)
+        if test $status -eq 0; and test -n "$physical"
+            set normalized "$physical"
+        end
+    end
+    if test "$normalized" = "/"
+        _reviewctl_log_error "Unsafe artifact root; expected a non-root absolute directory"
+        return 1
+    end
+    echo "$normalized"
 end
 
 function _reviewctl_core_cli_path
