@@ -1,5 +1,9 @@
 # CLI Flow (mandatory)
 
+This document describes the **internal `branch-review` maintainer flow**. If
+you want to use `reviewctl` from another repository, follow
+`/reviewctl-quick-start.md` instead of copying the full internal hook flow.
+
 1. Create branch from updated main:
    - `bun run flow:branch -- <type/short-name>`
 2. Stage changes:
@@ -56,6 +60,24 @@ Static gate rules:
 - `ruff` should run diff-scoped via `BR_DIFF_RANGE=<base>...HEAD bash scripts/run-ruff-check.sh`.
 - `pytest` should not default to repo-wide execution for isolated worktrees when there is no scoped Python test target.
 - Status semantics must distinguish `PENDING`, `PENDING_NO_CONFIG`, `SKIP`, and `NOT_APPLICABLE`.
+
+## External-safe usage (CLI-only)
+
+For adoption from another repository:
+
+1. Run `bash /path/to/branch-review/scripts/install-reviewctl.sh`
+2. Export `REVIEWCTL_CORE_CLI_PATH=/path/to/branch-review/mini-services/reviewctl/src/index.ts`
+3. Optionally export `REVIEW_API_TOKEN` and `BRANCH_REVIEW_API`
+4. Source the installed wrapper from the target repo
+5. Run `reviewctl_doctor`
+6. Use wrapper commands such as `reviewctl_status` or `reviewctl_plan`
+
+Important:
+
+- This is a separate workflow from `flow:branch`, `flow:commit`, and Husky hooks.
+- Current external use is safest in a disposable clone or worktree.
+- Safe mode isolates artifact paths per canonical repository location, but it is not a filesystem sandbox or immutable store.
+- Prefer an isolated worktree for early adoption. Do not edit generated artifacts in place; verify the run ID and reviewed SHA before using them as evidence.
 
 ## PR comments workflow (gh wrapper)
 
