@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
@@ -175,7 +176,23 @@ export async function verdictCommand(options: {
     // Re-evaluate HEAD and every report after collection; a plan or report is
     // never a merge authorization by itself.
     const observedHead = getCurrentSha();
-    const gateState = evaluateReviewGate({
+    const reviewedHeadSha = execFileSync(
+      'git',
+      ['rev-parse', '--verify', 'HEAD^{commit}'],
+      { encoding: 'utf-8' },
+    ).trim();
+    const reviewedBaseSha = execFileSync(
+      'git',
+      ['rev-parse', '--verify', 'refs/heads/' + run.base_branch + '^{commit}'],
+      { encoding: 'utf-8' },
+    ).trim();
+    // The base is part of the reviewed diff. A moved or unknown base is STALE.
+    const baseUnchanged =
+      typeof run.base_sha === 'string' &&
+      /^[0-9a-f]{7,64}$/.test(run.base_sha) &&
+      reviewedBaseSha.startsWith(run.base_sha);
+    const fullHeadMatches = reviewedHeadSha.startsWith(observedHead);
+    const evaluatedState = evaluateReviewGate({
       expectedHead: run.head_sha_at_plan,
       currentHead: observedHead,
       driftStatus: run.drift_status,
@@ -187,6 +204,9 @@ export async function verdictCommand(options: {
       p0Count: aggregated.p0Total,
       staticBlockers: staticGate.blocking.length,
     });
+    const gateState = baseUnchanged && fullHeadMatches
+      ? evaluatedState
+      : 'STALE';
     if (gateState !== 'PASS' && gateState !== 'FAIL') {
       spinner.warn(chalk.yellow(`${gateState}: Review is not eligible for PASS`));
       fs.writeFileSync(
@@ -218,7 +238,14 @@ export async function verdictCommand(options: {
     fs.writeFileSync(path.join(runDir, 'final.md'), finalMd);
 
     // Generate final.json
-    const finalJson = generateFinalJson(aggregated, verdict, run, staticGate);
+    const finalJson = generateFinalJson(
+      aggregated,
+      verdict,
+      run,
+      staticGate,
+      reviewedHeadSha,
+      reviewedBaseSha,
+    );
     fs.writeFileSync(
       path.join(runDir, 'final.json'),
       JSON.stringify(finalJson, null, 2),
@@ -897,6 +924,8 @@ function generateFinalJson(
   verdict: Verdict,
   run: any,
   staticGate: StaticGateEvaluation,
+  reviewedHeadSha: string,
+  reviewedBaseSha: string,
 ): FinalResult {
   const diffStats = getDiffStats();
 
@@ -905,6 +934,8 @@ function generateFinalJson(
     branch: run.branch,
     target_branch: run.target_branch || run.branch,
     base_branch: run.base_branch,
+    reviewed_head_sha: reviewedHeadSha,
+    reviewed_base_sha: reviewedBaseSha,
     timestamp: new Date().toISOString(),
     verdict,
     statistics: {

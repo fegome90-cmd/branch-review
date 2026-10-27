@@ -184,6 +184,9 @@ export interface FinalResult {
   base_branch: string;
   timestamp: string;
   verdict: Verdict;
+  /** Full immutable commit identities for local merge guard. */
+  reviewed_head_sha?: string;
+  reviewed_base_sha?: string;
   /** Review-only result; GitHub merge requires separate authorization. */
   agent_verdicts?: Record<string, 'PASS' | 'FAIL' | 'UNKNOWN'>;
   merge_ready?: boolean;
