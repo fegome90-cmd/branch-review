@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { format } from 'date-fns';
+import { getReviewDiffSnapshot } from './review-diff.js';
 import { v4 as uuidv4 } from 'uuid';
 import {
   EXPLORE_DIR,
@@ -408,47 +409,13 @@ export function copyExplorerFiles(runId: string): void {
   }
 }
 
-// Get git diff stats
-export function getDiffStats(): {
-  files: number;
-  added: number;
-  removed: number;
-} {
-  try {
-    const baseBranch = getBaseBranch();
-    const diffstat = execSync(
-      `git diff --shortstat ${baseBranch}...HEAD 2>/dev/null || git diff --shortstat HEAD~1`,
-      { encoding: 'utf-8' },
-    );
-
-    const filesMatch = diffstat.match(/(\d+) files? changed/);
-    const addedMatch = diffstat.match(/(\d+) insertions?/);
-    const removedMatch = diffstat.match(/(\d+) deletions?/);
-
-    return {
-      files: filesMatch ? parseInt(filesMatch[1], 10) : 0,
-      added: addedMatch ? parseInt(addedMatch[1], 10) : 0,
-      removed: removedMatch ? parseInt(removedMatch[1], 10) : 0,
-    };
-  } catch {
-    return { files: 0, added: 0, removed: 0 };
-  }
+// Compatibility helpers; the Git scope is always explicit and fail-closed.
+export function getDiffStats(baseBranch: string) {
+  return getReviewDiffSnapshot(baseBranch).stats;
 }
 
-// Get changed files list
-export function getChangedFiles(baseBranch = getBaseBranch()): string[] {
-  try {
-    const files = execSync(
-      `git diff --name-only ${baseBranch}...HEAD 2>/dev/null || git diff --name-only HEAD~1`,
-      { encoding: 'utf-8' },
-    );
-    return files
-      .trim()
-      .split('\n')
-      .filter((f) => f.length > 0);
-  } catch {
-    return [];
-  }
+export function getChangedFiles(baseBranch: string): string[] {
+  return getReviewDiffSnapshot(baseBranch).changedFiles;
 }
 
 // Validate preconditions
