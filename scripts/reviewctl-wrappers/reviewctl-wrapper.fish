@@ -71,16 +71,12 @@ function _reviewctl_checked_artifact_root
         _reviewctl_log_error "Unsafe artifact root; expected an absolute directory"
         return 1
     end
-    set -l normalized (path normalize -- "$root")
-    if test $status -ne 0; or test -z "$normalized"
-        _reviewctl_log_error "Unable to normalize artifact root"
+    # path resolve handles symlinks and '..' even for not-yet-existing paths.
+    # Fish may return a nonzero status for already normalized paths; verify output.
+    set -l normalized (path resolve -- "$root")
+    if test -z "$normalized"
+        _reviewctl_log_error "Unable to resolve artifact root"
         return 1
-    end
-    if test -d "$normalized"
-        set -l physical (realpath "$normalized" 2>/dev/null)
-        if test $status -eq 0; and test -n "$physical"
-            set normalized "$physical"
-        end
     end
     if test "$normalized" = "/"
         _reviewctl_log_error "Unsafe artifact root; expected a non-root absolute directory"
