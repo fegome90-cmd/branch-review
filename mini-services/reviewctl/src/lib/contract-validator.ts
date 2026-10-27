@@ -41,6 +41,27 @@ const REQUIRED_SECTIONS = {
 const EVIDENCE_PATTERN =
   /(?:`([^`]+:\d+)`|([a-zA-Z0-9_\-./]+\.\w+:\d+)|\*\*Location\*\*[^\n]*(\S+:\d+))/gi;
 
+export type DeclaredVerdict = 'PASS' | 'FAIL' | 'UNKNOWN';
+
+/** Only an explicit decision in the Verdict section can authorize a PASS. */
+export function parseDeclaredVerdict(content: string): DeclaredVerdict {
+  const lines = content.split(/\r?\n/);
+  const headingIndex = lines.findIndex((line) =>
+    /^##[ \t]+Verdict[ \t]*$/i.test(line.trim()),
+  );
+  if (headingIndex < 0) return 'UNKNOWN';
+
+  const decisions = new Set<'PASS' | 'FAIL'>();
+  for (const line of lines.slice(headingIndex + 1)) {
+    if (/^##[ \t]+\S/.test(line)) break;
+    const match = line.trim().match(
+      /^(?:#{1,6}[ \t]+)?(?:[-*][ \t]+)?(?:\*\*)?(PASS|FAIL)(?:\*\*)?(?=$|[ \t.:;,\u2013\u2014-])/i,
+    );
+    if (match) decisions.add(match[1].toUpperCase() as 'PASS' | 'FAIL');
+  }
+  return decisions.size === 1 ? [...decisions][0] : 'UNKNOWN';
+}
+
 // Validate report against SSOT contract
 export function validateReport(content: string): ValidationResult {
   const errors: string[] = [];
@@ -95,6 +116,8 @@ export function validateReport(content: string): ValidationResult {
 
   if (!sections.verdict) {
     errors.push('Missing required section: Verdict');
+  } else if (parseDeclaredVerdict(content) === 'UNKNOWN') {
+    errors.push('Missing or ambiguous verdict decision: expected PASS or FAIL');
   }
 
   // Test Plan and Confidence are recommended but not blocking

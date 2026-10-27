@@ -175,6 +175,9 @@ export interface FinalResult {
   base_branch: string;
   timestamp: string;
   verdict: Verdict;
+  /** Review-only result; GitHub merge requires separate authorization. */
+  agent_verdicts?: Record<string, 'PASS' | 'FAIL' | 'UNKNOWN'>;
+  merge_ready?: boolean;
   statistics: {
     p0_total: number;
     p1_total: number;
