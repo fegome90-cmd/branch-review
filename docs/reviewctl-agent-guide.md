@@ -1,388 +1,98 @@
-# Reviewctl Agent Guide
+# reviewctl: agent guide
 
-**Versión**: 1.0
-**Fecha**: 2026-03-01
-**Para**: AI agents executing reviewctl workflow
+Agent-facing guide for the current Bun CLI. This describes actual behavior, not a proposal for agent execution.
 
----
+## Purpose and boundaries
 
-## Overview
+- `reviewctl` plans reviews and creates requests based on a Git branch diff. It **does not execute AI agents or static analyzers** when `run` is invoked.
+- Agents and static tools must be executed separately; their reports are accepted through `ingest`.
+- A local verdict `PASS` means only that local review conditions passed. It is **not** GitHub merge authorization (`merge_ready: false`).
+- Use an isolated worktree or disposable clone for unfamiliar changes. Never treat generated output as immutable evidence.
 
-`reviewctl` is a code review orchestration CLI that coordinates:
+## Prerequisites and CLI invocation
 
-- Context exploration
-- Diff analysis
-- Plan resolution
-- Static analysis (biome, ruff, pytest, etc.)
-- Agent execution (code-reviewer, code-simplifier, silent-failure-hunter)
-- Verdict generation
-
----
-
-## When to Use Reviewctl
-
-Use `reviewctl` when:
-
-- Reviewing a branch before merging
-- Running code review gates
-- Generating structured review reports
-- Validating static analysis tools
-
----
-
-## Repository Context
-
-### In branch-review repo:
+Install the project's Bun dependencies and have Git available. From the `branch-review` repository root:
 
 ```bash
-# Local installation
-bun mini-services/reviewctl/src/index.ts <command>
+bun install --frozen-lockfile
+bun mini-services/reviewctl/src/index.ts help
 ```
 
-### In other repos (e.g., examen_grado):
+To call the CLI from any repository, set its absolute source path explicitly (replace the example path with the real checkout):
 
 ```bash
-# Use absolute path to branch-review CLI
-REVIEW_CLI="/Users/felipe_gonzalez/Developer/branch-review/mini-services/reviewctl/src/index.ts"
-bun $REVIEW_CLI <command>
+export REVIEWCTL_CORE_CLI_PATH="/absolute/path/to/branch-review/mini-services/reviewctl/src/index.ts"
+reviewctl() { bun "$REVIEWCTL_CORE_CLI_PATH" "$@"; }
 ```
 
-**NEVER** use:
-
-- `mini-services/reviewctl/src/index.ts` (relative path fails in other repos)
-- `.next/standalone/...` (standalone build does not include reviewctl)
-
----
-
-## Standard Workflow
-
-### Step 1: Initialize Review Run
+Inside a **different repository**, enable external-safe mode before invoking the CLI:
 
 ```bash
-# Create review branch automatically
-bun $REVIEW_CLI init --create
-
-# Or use existing review branch
-bun $REVIEW_CLI init
+export REVIEWCTL_SAFE_MODE=1
+reviewctl doctor
 ```
 
-**Output**: Review branch created, `run.json` saved
+External-safe mode stores generated review artifacts outside the target repository using a path derived from its canonical location. This is **path separation, not a sandbox or concurrency guarantee**. For optional Bash/Fish wrappers, follow [`reviewctl-quick-start.md`](../reviewctl-quick-start.md). API execution of external repositories additionally requires `ALLOWED_REPOS`.
 
----
+## Review lifecycle
 
-### Step 2: Explore Context
+Use the following inside a clean feature worktree. From `branch-review` itself, `init --create` creates a dedicated review branch. For an external repository already in safe mode, omit `--create` to keep the current branch.
 
 ```bash
-bun $REVIEW_CLI explore context
+reviewctl help
+reviewctl init --create --base main --target HEAD
+reviewctl explore context --force
+reviewctl explore diff --force
+reviewctl plan --plan-path docs/plans/relevant-plan.md
+reviewctl run
 ```
 
-**Output**: `_ctx/review_runs/run_xxx/explore/context.md`
+Adapt `main` and the plan path to the project. `--plan-path` must reference a real file. The `--force` explorer flags prevent reuse of stale exploration files. Check `reviewctl status` after each stage when debugging.
 
-- Stack detection (Python, TS/JS, SQL)
-- Sensitive zones (secrets, auth, payments)
-- Configuration analysis
-
----
-
-### Step 3: Explore Diff
+`run` writes `REQUEST_*.md` handoffs and static-tool status/request files; these are **not execution results**. Have external reviewers produce Markdown reports with `## Summary`, `## Verdict`, explicit `PASS` or `FAIL`, and evidence tied to file/line references. Invoke only applicable tools and preserve their real process exit statuses.
 
 ```bash
-bun $REVIEW_CLI explore diff
+# Example: after a real agent has written its report
+reviewctl ingest --agent code-reviewer --input /absolute/path/to/agent-report.md
+
+# Example: after running the project's applicable static check
+reviewctl ingest --static biome --input /absolute/path/to/biome-output.txt
+
+# Once every required report is present
+reviewctl verdict --json
 ```
 
-**Output**: `_ctx/review_runs/run_xxx/explore/diff.md`
+Do not ingest an empty static output as proof of success; the gate treats that evidence as `UNKNOWN`. Missing, invalid, or ambiguous required reports cannot be waived by `--allow-incomplete`.
 
-- Files changed
-- Lines added/removed
-- Change patterns
+## Plan status and drift
 
----
+Valid plan-source statuses are `FOUND`, `MISSING`, and `AMBIGUOUS`. **`AUTOGENERATED` is not a supported plan-source status.**
 
-### Step 4: Resolve Plan
+`plan` can generate review-plan artifacts even when no matching source document is found; that does **not** prove alignment. For a review intended to reach an authoritative local `PASS`, provide a real plan (`--plan-path`) and verify the drift state is `ALIGNED`. `run --no-plan` is a diagnostic escape hatch for generating requests, **not** permission to bypass the fail-closed verdict. Avoid `--allow-drift` for acceptance.
 
-```bash
-# Auto-resolve from docs/plans/
-bun $REVIEW_CLI plan
+If HEAD, context or plan changes, rerun exploration and planning. A stale HEAD or unknown drift prevents a successful review verdict.
 
-# Or use explicit plan
-bun $REVIEW_CLI plan --plan-path docs/plans/my-plan.md
-```
+## Interpreting results
 
-**Plan Status**:
-| Status | Description | Run Behavior |
-|--------|-------------|---------------|
-| FOUND | Explicit plan found | Uses plan configuration |
-| AUTOGENERATED | No matching plan | Generates plan-less from stack |
-| MISSING | No plans directory | Generates plan-less from stack |
-| AMBIGUOUS | Multiple candidates | Generates plan-less from stack |
+- `PASS`: local evidence satisfied the review gate; still check GitHub status and human review.
+- `FAIL`: a required reviewer rejected, a P0 exists, or a required static gate blocks.
+- `INCOMPLETE` / `INVALID`: missing or invalid required review artifacts.
+- `STALE`: the reviewed commit or drift evidence no longer matches.
+- `ERROR`: invalid gate inputs or operational failure.
 
-**IMPORTANT**: Since the AUTOGENERATED fix (2026-03-01), `run` works correctly with AUTOGENERATED/MISSING/AMBIGUOUS status.
-
-**Output**:
-
-- `_ctx/review_runs/run_xxx/plan.md`
-- `_ctx/review_runs/run_xxx/plan.json`
-
----
-
-### Step 5: Run Review
-
-```bash
-# Standard mode (requires valid plan or AUTOGENERATED)
-bun $REVIEW_CLI run
-
-# Force plan-less mode (skip plan validation)
-bun $REVIEW_CLI run --no-plan
-```
-
-**Output**:
-
-- `_ctx/review_runs/run_xxx/reports/REQUEST_*.md` (agent requests)
-- `_ctx/review_runs/run_xxx/statics/*_status.json` (static tool status)
-
-**Phases**:
-
-1. Validating preconditions (review branch, context, diff, plan)
-2. Preparing run context (drift detection, plan resolution)
-3. Generating static requests (biome, ruff, pytest)
-4. Generating agent requests (code-reviewer, etc.)
-5. Finalizing run state
-
----
-
-### Step 6: Ingest Agent Reports
-
-```bash
-# Ingest agent output
-bun $REVIEW_CLI ingest --agent code-reviewer --input report.md
-
-# Ingest static tool output
-bun $REVIEW_CLI ingest --static biome --input /tmp/biome-output.md
-```
-
----
-
-### Step 7: Generate Verdict
-
-```bash
-# Standard verdict (requires all reports)
-bun $REVIEW_CLI verdict
-
-# Allow incomplete verdict (for testing/debug)
-bun $REVIEW_CLI verdict --allow-incomplete
-```
-
-**Output**:
-
-- `_ctx/review_runs/run_xxx/final.md`
-- `_ctx/review_runs/run_xxx/final.json`
-
-**Verdict Fields**:
-
-- P0/P1/P2 counts
-- Agent completion status
-- Static analysis results
-- Drift analysis
-- Plan Match status
-
----
-
-## Common Patterns
-
-### Pattern 1: New Branch Without Plan
-
-```bash
-bun $REVIEW_CLI init --create
-bun $REVIEW_CLI explore context
-bun $REVIEW_CLI explore diff
-bun $REVIEW_CLI plan
-# Will show: "Plan is AMBIGUOUS. Use --plan-path to specify."
-# Will generate: plan.md with AUTOGENERATED status
-bun $REVIEW_CLI run
-# ✅ Now works (previously failed before fix)
-```
-
-### Pattern 2: Explicit Plan Required
-
-```bash
-bun $REVIEW_CLI init --create
-bun $REVIEW_CLI explore context
-bun $REVIEW_CLI explore diff
-bun $REVIEW_CLI plan --plan-path docs/plans/my-review-plan.md
-# Uses plan configuration
-bun $REVIEW_CLI run
-```
-
-### Pattern 3: Debug / Force Execution
-
-```bash
-bun $REVIEW_CLI run --no-plan
-# Skips plan validation entirely
-```
-
-### Pattern 4: Multi-Repo Execution
-
-```bash
-# In branch-review
-bun mini-services/reviewctl/src/index.ts run
-
-# In examen_grado (use absolute path)
-REVIEW_CLI="/Users/felipe_gonzalez/Developer/branch-review/mini-services/reviewctl/src/index.ts"
-bun $REVIEW_CLI run
-```
-
----
+Do not call `reviewctl merge` solely because of `PASS`: its legacy merge path still requires separate hardening. Follow the repository's approved PR and GitHub-check procedure instead.
 
 ## Troubleshooting
 
-### Error: "✗ failed (0s) unknown"
+- **Module not found:** use an absolute `REVIEWCTL_CORE_CLI_PATH` pointing to the actual `index.ts` file.
+- **Missing context/diff:** run both explorers with `--force` before `plan`/`run`.
+- **Plan missing or ambiguous:** supply a valid `--plan-path`; avoid treating a generated plan artifact as evidence of plan alignment.
+- **Stale verdict:** check branch/HEAD and rerun explorers, plan, applicable checks and agent review.
+- **External API denied:** verify `ALLOWED_REPOS` contains the canonical target repository path; the CLI in local safe mode does not require an API token.
 
-**Cause**: `plan_status` is AMBIGUOUS/MISSING without AUTOGENERATED fix
-**Solution**: Update branch-review to latest version (includes AUTOGENERATED fix)
+## Authoritative references
 
-### Error: "Module not found"
-
-**Cause**: Using relative path in non-branch-review repo
-**Solution**: Use absolute path: `/Users/felipe_gonzalez/Developer/branch-review/mini-services/reviewctl/src/index.ts`
-
-### Error: "Precondition failures: - Plan is MISSING or AMBIGUOUS"
-
-**Cause**: `plan.md` does not exist or plan_status is invalid
-**Solution**:
-
-- Run `reviewctl plan` first
-- Or use `reviewctl run --no-plan`
-
-### Warning: "Drift detected"
-
-**Cause**: HEAD changed or files modified since plan was generated
-**Solution**:
-
-- Re-run `reviewctl explore context`, `reviewctl explore diff`, `reviewctl plan`
-- Or use `reviewctl run --allow-drift` (debug only)
-
----
-
-## Status Commands
-
-### Check Current Run
-
-```bash
-bun $REVIEW_CLI status --last
-```
-
-**Output**:
-
-- Run ID, branch, status
-- Explore progress
-- Plan status
-- Agent completion (x/3)
-- Statics passed (x/n)
-
-### Show Help
-
-```bash
-bun $REVIEW_CLI help
-bun $REVIEW_CLI <command> --help
-```
-
----
-
-## Cleanup
-
-### Cleanup Current Run
-
-```bash
-bun $REVIEW_CLI cleanup
-```
-
-### Cleanup All Runs
-
-```bash
-bun $REVIEW_CLI cleanup --all
-```
-
-### Cleanup Runs Older Than N Days
-
-```bash
-bun $REVIEW_CLI cleanup --older-than 7
-```
-
----
-
-## Integration with Other Tools
-
-### Git Flow
-
-```bash
-# Pre-PR workflow
-bun run flow:branch -- feature/my-change
-bun $REVIEW_CLI init --create
-# ... run review ...
-bun run flow:commit -- -m "feat: add feature"
-bun run flow:prepr
-bun run flow:pr -- "PR title" "PR body"
-```
-
-### Static Tools
-
-```bash
-# Biome
-bun run lint:biome > /tmp/biome-output.md
-bun $REVIEW_CLI ingest --static biome --input /tmp/biome-output.md
-
-# Ruff
-bun run lint:ruff > /tmp/ruff-output.md
-bun $REVIEW_CLI ingest --static ruff --input /tmp/ruff-output.md
-
-# Pytest
-pytest -q > /tmp/pytest-output.md
-bun $REVIEW_CLI ingest --static pytest --input /tmp/pytest-output.md
-```
-
----
-
-## Best Practices for Agents
-
-1. **Always check status first**:
-
-   ```bash
-   bun $REVIEW_CLI status --last
-   ```
-
-2. **Use absolute paths in non-branch-review repos**:
-
-   ```bash
-   REVIEW_CLI="/Users/felipe_gonzalez/Developer/branch-review/mini-services/reviewctl/src/index.ts"
-   ```
-
-3. **Verify plan.md was generated**:
-
-   ```bash
-   ls _ctx/review_runs/run_*/plan.md
-   ```
-
-4. **Check run.json for plan_status**:
-
-   ```bash
-   cat _ctx/review_runs/run_*/run.json | jq .plan_status
-   ```
-
-5. **Handle AUTOGENERATED status**:
-   - Review generates plan-less review
-   - `run` command works normally
-   - No need for `--no-plan` flag
-
-6. **Cleanup after failed runs**:
-   ```bash
-   bun $REVIEW_CLI cleanup
-   ```
-
----
-
-## References
-
-- **Branch Review AGENTS.md**: `/Users/felipe_gonzalez/Developer/branch-review/AGENTS.md`
-- **Plan Fix**: `.pi/plan/fix-plan-ambiguous-run-failure-2026-03-01.md`
-- **CLI Source**: `mini-services/reviewctl/src/index.ts`
-- **Plan Resolution**: `mini-services/reviewctl/src/lib/plan-resolver.ts`
+- [`AGENTS.md`](../AGENTS.md) — repository rules
+- [`docs/cli-flow.md`](cli-flow.md) — maintainer workflow
+- [`docs/report-contract.md`](report-contract.md) — accepted report format
+- [`reviewctl-quick-start.md`](../reviewctl-quick-start.md) — external-safe wrapper setup

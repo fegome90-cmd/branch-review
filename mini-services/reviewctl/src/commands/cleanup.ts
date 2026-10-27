@@ -24,18 +24,17 @@ export async function cleanupCommand(options: {
         let cleaned = 0;
 
         for (const runId of runs) {
+          if (run?.run_id === runId) {
+            continue;
+          }
+
           const runPath = path.join(REVIEW_RUNS_DIR, runId);
           const stat = fs.statSync(runPath);
 
           if (stat.isDirectory()) {
-            // Check if merged
             const finalJsonPath = path.join(runPath, 'final.json');
             if (fs.existsSync(finalJsonPath)) {
-              const _finalJson = JSON.parse(
-                fs.readFileSync(finalJsonPath, 'utf-8'),
-              );
-              // Only clean merged/completed runs
-              fs.rmSync(runPath, { recursive: true });
+              fs.rmSync(runPath, { recursive: true, force: true });
               cleaned++;
             }
           }
@@ -62,11 +61,20 @@ export async function cleanupCommand(options: {
         const runs = fs.readdirSync(REVIEW_RUNS_DIR);
 
         for (const runId of runs) {
+          if (run?.run_id === runId) {
+            continue;
+          }
+
           const runPath = path.join(REVIEW_RUNS_DIR, runId);
           const stat = fs.statSync(runPath);
+          const finalJsonPath = path.join(runPath, 'final.json');
 
-          if (stat.isDirectory() && stat.mtimeMs < cutoff) {
-            fs.rmSync(runPath, { recursive: true });
+          if (
+            stat.isDirectory() &&
+            stat.mtimeMs < cutoff &&
+            fs.existsSync(finalJsonPath)
+          ) {
+            fs.rmSync(runPath, { recursive: true, force: true });
             cleaned++;
           }
         }

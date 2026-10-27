@@ -16,6 +16,8 @@ branch-review coordinates code review agents and static analysis tools into a un
 - 9 CLI commands for complete review workflow
 - Multi-agent support (code-reviewer, code-simplifier, sql-safety-hunter)
 - Static analysis integration (biome, ruff, pyrefly)
+- Diff-based review scope for branches and isolated worktrees
+- Scoped static-gate requests with explicit applicability states (`PENDING`, `PENDING_NO_CONFIG`, `SKIP`, `NOT_APPLICABLE`)
 - Plan-based reviews with drift detection
 - Priority findings: P0 (blocking), P1 (important), P2 (minor)
 - Real-time dashboard with verdict visualization
@@ -28,6 +30,14 @@ bun install           # Install dependencies
 bun run dev           # Start dashboard at localhost:3000
 bun reviewctl help    # Show CLI commands
 ```
+
+## Adoption Modes
+
+- **Dashboard development**: `bun run dev` serves the UI at `http://localhost:3000`.
+- **API mode**: production-style API runs at `http://localhost:3001` after `bun run build` + PM2.
+- **CLI in this repo**: use `bun reviewctl ...` directly.
+- **CLI from another repo**: follow `/reviewctl-quick-start.md` and set
+  `REVIEWCTL_CORE_CLI_PATH` explicitly before sourcing the wrapper.
 
 ## Quality Checks
 
@@ -54,6 +64,7 @@ bun run audit:deps                                        # Dependency vulnerabi
 | `verdict`               | Generate final PASS/FAIL verdict      |
 | `merge`                 | Merge branch after PASS               |
 | `cleanup`               | Remove run artifacts                  |
+| `doctor`                | Run local/external readiness checks   |
 
 ### Command Details
 
@@ -82,6 +93,12 @@ reviewctl run --allow-drift           # override drift (debug only)
 reviewctl run --max-agents 2
 ```
 
+Notes:
+
+- `reviewctl` evaluates branch diff / worktree diff scope, not ad-hoc file lists.
+- `ruff` should be executed diff-scoped via `BR_DIFF_RANGE=<base>...HEAD bash scripts/run-ruff-check.sh`.
+- `pytest` should not default to repo-wide execution for isolated worktrees when no scoped Python test target exists.
+
 **`ingest`** - Capture agent/static output
 
 ```bash
@@ -94,6 +111,9 @@ reviewctl ingest --static ruff --input ruff-output.txt
 ```
 init → explore context → explore diff → plan → run → ingest → verdict → merge
 ```
+
+For safe external CLI-only adoption, do **not** copy internal Husky/flow hooks
+blindly. Use the dedicated quick start and wrapper install path instead.
 
 ## API Endpoints
 

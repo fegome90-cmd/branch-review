@@ -9,6 +9,7 @@ import {
 } from '../lib/constants.js';
 import {
   computeHash,
+  parseDeclaredVerdict,
   isValidName,
   sanitizeName,
   type ValidationResult,
@@ -275,6 +276,19 @@ async function ingestAgentReport(
 
   // Write result.json with parsed findings
   const result = parseReport(content, sanitizedAgent as AgentName, run.run_id);
+  // Preserve severities from the statistics table when headings are unusual.
+  result.statistics.p0_count = Math.max(
+    result.statistics.p0_count,
+    validation.statistics.p0_count,
+  );
+  result.statistics.p1_count = Math.max(
+    result.statistics.p1_count,
+    validation.statistics.p1_count,
+  );
+  result.statistics.p2_count = Math.max(
+    result.statistics.p2_count,
+    validation.statistics.p2_count,
+  );
   result.validation = validation;
   fs.writeFileSync(
     path.join(agentTaskDir, 'result.json'),
@@ -515,8 +529,8 @@ function parseGenericStaticSummary(
 
   if (normalized.trim().length === 0) {
     return {
-      status: 'PASS',
-      reason: `${toolName} output is empty (no findings reported)`,
+      status: 'UNKNOWN',
+      reason: `${toolName} output is empty (execution success unverified)`,
       issues: 0,
     };
   }
@@ -658,7 +672,7 @@ function parseReport(
     timestamp: new Date().toISOString(),
     findings: [],
     statistics: { p0_count: 0, p1_count: 0, p2_count: 0 },
-    verdict: { result: 'PASS', justification: 'Parsed from ingested report' },
+    verdict: { result: 'UNKNOWN', justification: 'Parsed from ingested report' },
   };
 
   // Extract P0 findings
@@ -729,16 +743,7 @@ function parseReport(
     (f) => f.priority === 'P2',
   ).length;
 
-  // Check for PASS/FAIL in verdict section
-  if (/##\s*Verdict[^#]*\*\*FAIL\*\*/i.test(content)) {
-    result.verdict.result = 'FAIL';
-    const justificationMatch = content.match(
-      /##\s*Verdict[^#]*\*\*FAIL\*\*\s*[-–]?\s*([^\n]+)/i,
-    );
-    if (justificationMatch) {
-      result.verdict.justification = justificationMatch[1].trim();
-    }
-  }
+  result.verdict.result = parseDeclaredVerdict(content);
 
   return result;
 }

@@ -4,7 +4,7 @@ set -euo pipefail
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 HEAD_SHA=$(git rev-parse --short HEAD)
 TYPECHECK_SCOPE="${BR_PREPR_TYPECHECK_SCOPE:-app}"
-MARKER_FILE=".git/.pre-pr-ok"
+MARKER_FILE="$(git rev-parse --git-path .pre-pr-ok)"
 
 if [[ "$BRANCH" == "main" ]]; then
   echo "❌ pre-pr: do not open PRs directly from main"

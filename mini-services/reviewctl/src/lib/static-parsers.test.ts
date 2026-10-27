@@ -14,9 +14,9 @@ describe('parseRuffSummary', () => {
     expect(result.issues).toBe(0);
   });
 
-  test('returns PASS when output is empty', () => {
+  test('returns UNKNOWN when output is empty', () => {
     const result = parseRuffSummary('');
-    expect(result.status).toBe('PASS');
+    expect(result.status).toBe('UNKNOWN');
     expect(result.issues).toBe(0);
   });
 
@@ -49,9 +49,9 @@ describe('parseRuffSummary', () => {
 });
 
 describe('parseBiomeSummary', () => {
-  test('returns PASS when output is empty', () => {
+  test('returns UNKNOWN when output is empty', () => {
     const result = parseBiomeSummary('');
-    expect(result.status).toBe('PASS');
+    expect(result.status).toBe('UNKNOWN');
     expect(result.issues).toBe(0);
   });
 

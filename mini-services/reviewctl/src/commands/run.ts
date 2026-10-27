@@ -11,6 +11,7 @@ import { runWithPlainOutput, runWithTUI } from '../lib/tui/run-modes.js';
 import type { WorkflowReporter } from '../lib/tui/types.js';
 import {
   computeFileDigest,
+  getChangedFiles,
   getCurrentRun,
   getCurrentSha,
   getRunDir,
@@ -357,6 +358,187 @@ function resolveAgentsForRun(
   return defaults.slice(0, maxAgents);
 }
 
+type StaticToolName = 'biome' | 'ruff' | 'pytest' | 'pyrefly' | 'coderabbit';
+
+type StaticStatus = 'PENDING' | 'PENDING_NO_CONFIG' | 'SKIP' | 'NOT_APPLICABLE';
+
+interface StaticToolDefinition {
+  name: StaticToolName;
+  checkFile: string;
+  command: string;
+  lang: string;
+}
+
+interface StaticEvaluation {
+  tool: StaticToolDefinition;
+  status: StaticStatus;
+  required: boolean;
+  reason: string;
+  command: string;
+  shouldGenerateRequest: boolean;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function isPythonPath(filePath: string): boolean {
+  return (
+    /(^|\/)(pyproject\.toml|pytest\.ini|requirements.*\.txt)$/.test(filePath) ||
+    /\.pyi?$/.test(filePath)
+  );
+}
+
+function isPythonTestPath(filePath: string): boolean {
+  return /(\/|^)(tests?|test_.*|.*_test)\/.*\.py$/.test(filePath);
+}
+
+function isJsTsPath(filePath: string): boolean {
+  return /\.(?:[cm]?[jt]sx?)$/.test(filePath);
+}
+
+function getAlternateChecks(toolName: StaticToolName): string[] {
+  const alternateChecks: string[] = [];
+
+  if (toolName === 'ruff') {
+    alternateChecks.push(path.join(process.cwd(), 'pyproject.toml'));
+  }
+
+  if (toolName === 'pytest') {
+    alternateChecks.push(path.join(process.cwd(), 'pyproject.toml'));
+    alternateChecks.push(path.join(process.cwd(), 'tests'));
+  }
+
+  return alternateChecks;
+}
+
+function getScopedStaticCommand(
+  tool: StaticToolDefinition,
+  run: RunMetadata,
+  changedFiles: string[],
+): string {
+  if (tool.name === 'ruff') {
+    return `BR_DIFF_RANGE=${run.base_branch}...HEAD bash scripts/run-ruff-check.sh`;
+  }
+
+  if (tool.name === 'pytest') {
+    const changedPythonTests = changedFiles.filter((filePath) =>
+      isPythonTestPath(filePath),
+    );
+
+    if (changedPythonTests.length > 0) {
+      const targets = changedPythonTests.map(shellQuote).join(' ');
+      return `pytest -q ${targets}`;
+    }
+  }
+
+  return tool.command;
+}
+
+export function evaluateStaticToolRequest(input: {
+  tool: StaticToolDefinition;
+  changedFiles: string[];
+  run: RunMetadata;
+  planStatic?: { required?: boolean; reason?: string };
+}): StaticEvaluation {
+  const { tool, changedFiles, run, planStatic } = input;
+  const required = planStatic?.required || false;
+  const planReason = planStatic?.reason || '';
+  const checkPath = path.join(process.cwd(), tool.checkFile);
+  const alternateChecks = getAlternateChecks(tool.name);
+  const configExists =
+    fs.existsSync(checkPath) ||
+    alternateChecks.some((candidate) => fs.existsSync(candidate));
+
+  const hasPythonChanges = changedFiles.some((filePath) =>
+    isPythonPath(filePath),
+  );
+  const hasPythonTestsInDiff = changedFiles.some((filePath) =>
+    isPythonTestPath(filePath),
+  );
+  const hasJsTsChanges = changedFiles.some((filePath) => isJsTsPath(filePath));
+
+  if (tool.name === 'biome' && !hasJsTsChanges) {
+    return {
+      tool,
+      status: 'NOT_APPLICABLE',
+      required,
+      reason: 'No JS/TS files in diff scope',
+      command: tool.command,
+      shouldGenerateRequest: false,
+    };
+  }
+
+  if (tool.name === 'ruff' && !hasPythonChanges) {
+    return {
+      tool,
+      status: 'NOT_APPLICABLE',
+      required,
+      reason: 'No Python files in diff scope',
+      command: getScopedStaticCommand(tool, run, changedFiles),
+      shouldGenerateRequest: false,
+    };
+  }
+
+  if (tool.name === 'pyrefly' && !hasPythonChanges) {
+    return {
+      tool,
+      status: 'NOT_APPLICABLE',
+      required,
+      reason: 'No Python files in diff scope',
+      command: tool.command,
+      shouldGenerateRequest: false,
+    };
+  }
+
+  if (tool.name === 'pytest') {
+    if (!hasPythonChanges && !hasPythonTestsInDiff) {
+      return {
+        tool,
+        status: 'NOT_APPLICABLE',
+        required,
+        reason: 'No Python testable scope detected in diff',
+        command: getScopedStaticCommand(tool, run, changedFiles),
+        shouldGenerateRequest: false,
+      };
+    }
+
+    if (!hasPythonTestsInDiff && !required) {
+      return {
+        tool,
+        status: 'SKIP',
+        required,
+        reason: 'No changed Python test targets in diff',
+        command: getScopedStaticCommand(tool, run, changedFiles),
+        shouldGenerateRequest: false,
+      };
+    }
+  }
+
+  if (!configExists) {
+    const status: StaticStatus = required
+      ? 'PENDING_NO_CONFIG'
+      : 'NOT_APPLICABLE';
+    return {
+      tool,
+      status,
+      required,
+      reason: planReason || `${tool.checkFile} not found for scoped run`,
+      command: getScopedStaticCommand(tool, run, changedFiles),
+      shouldGenerateRequest: required,
+    };
+  }
+
+  return {
+    tool,
+    status: 'PENDING',
+    required,
+    reason: planReason || 'Applicable to current diff scope',
+    command: getScopedStaticCommand(tool, run, changedFiles),
+    shouldGenerateRequest: true,
+  };
+}
+
 // Generate static analysis requests - DO NOT RUN, just create requests
 async function generateStaticsRequests(
   _runId: string,
@@ -372,16 +554,18 @@ async function generateStaticsRequests(
     fs.mkdirSync(reportsDir, { recursive: true });
   }
 
+  const run = getCurrentRun();
+  if (!run) {
+    throw new Error('No active review run. Run: reviewctl init');
+  }
+
+  const changedFiles = getChangedFiles(run.base_branch);
+
   // Load plan.json to get required/optional statics
   const planJson = loadPlanJson(runDir);
 
   // All possible static tools
-  const staticTools: Array<{
-    name: string;
-    checkFile: string;
-    command: string;
-    lang: string;
-  }> = [
+  const staticTools: StaticToolDefinition[] = [
     {
       name: 'biome',
       checkFile: 'biome.json',
@@ -415,91 +599,55 @@ async function generateStaticsRequests(
   ];
 
   const requestedTools: string[] = [];
-  const skippedTools: string[] = [];
 
   for (const tool of staticTools) {
-    // Check if tool is in plan
-    const planStatic = planJson?.statics.find((s) => s.name === tool.name);
-    const isRequired = planStatic?.required || false;
-    const planReason = planStatic?.reason || '';
+    const planStatic = planJson?.statics.find(
+      (staticTool) => staticTool.name === tool.name,
+    );
+    const evaluation = evaluateStaticToolRequest({
+      tool,
+      changedFiles,
+      run,
+      planStatic,
+    });
 
-    const checkPath = path.join(process.cwd(), tool.checkFile);
-    const alternateChecks: string[] = [];
-
-    if (tool.name === 'ruff') {
-      alternateChecks.push(path.join(process.cwd(), 'pyproject.toml'));
-    }
-
-    if (tool.name === 'pytest') {
-      alternateChecks.push(path.join(process.cwd(), 'pyproject.toml'));
-      alternateChecks.push(path.join(process.cwd(), 'tests'));
-    }
-
-    // Check if tool config/capability exists
-    const configExists =
-      fs.existsSync(checkPath) ||
-      alternateChecks.some((candidate) => fs.existsSync(candidate));
-
-    // Determine if we should generate a request or skip
-    const shouldGenerate = configExists || (planJson && isRequired);
-
-    if (shouldGenerate) {
-      // Generate request
+    if (evaluation.shouldGenerateRequest) {
       const requestContent = generateStaticsRequestMd(
-        tool,
-        isRequired,
-        planReason,
+        { ...tool, command: evaluation.command },
+        evaluation.required,
+        evaluation.reason,
       );
       safeWriteSync(
         path.join(reportsDir, `REQUEST_statics_${tool.name}.md`),
         requestContent,
       );
-
-      // Mark as PENDING
-      const statusPath = path.join(staticsDir, `${tool.name}_status.json`);
-      safeWriteSync(
-        statusPath,
-        JSON.stringify(
-          {
-            tool: tool.name,
-            status: configExists ? 'PENDING' : 'PENDING_NO_CONFIG',
-            required: isRequired,
-            reason: planReason,
-            requested_at: new Date().toISOString(),
-            command: tool.command,
-          },
-          null,
-          2,
-        ),
-      );
-
       requestedTools.push(tool.name);
     } else {
-      // SKIP - not in plan or no config
       safeWriteSync(
         path.join(staticsDir, `${tool.name}.md`),
-        `# ${tool.name} Analysis\n\nSKIP: ${configExists ? 'Not in plan' : `${tool.checkFile} not found`}`,
+        `# ${tool.name} Analysis\n\n${evaluation.status}: ${evaluation.reason}`,
       );
-      safeWriteSync(
-        path.join(staticsDir, `${tool.name}_status.json`),
-        JSON.stringify(
-          {
-            tool: tool.name,
-            status: 'SKIP',
-            required: false,
-            reason: configExists
-              ? 'Not in plan'
-              : `${tool.checkFile} not found`,
-          },
-          null,
-          2,
-        ),
-      );
-      skippedTools.push(tool.name);
     }
+
+    const statusPath = path.join(staticsDir, `${tool.name}_status.json`);
+    safeWriteSync(
+      statusPath,
+      JSON.stringify(
+        {
+          tool: tool.name,
+          status: evaluation.status,
+          required: evaluation.required,
+          reason: evaluation.reason,
+          requested_at: new Date().toISOString(),
+          command: evaluation.command,
+          diff_scope_files: changedFiles.length,
+        },
+        null,
+        2,
+      ),
+    );
   }
 
-  // Generate combined statics request if any tools were requested
   if (requestedTools.length > 0) {
     const combinedRequest = `# Static Analysis Requests
 
@@ -516,8 +664,8 @@ Execute each tool and ingest the output:
 bun run lint:biome > /tmp/biome-output.md
 reviewctl ingest --static biome --input /tmp/biome-output.md
 
-# Example for ruff
-bun run lint:ruff > /tmp/ruff-output.md
+# Example for ruff (diff-scoped)
+BR_DIFF_RANGE=${run.base_branch}...HEAD bash scripts/run-ruff-check.sh > /tmp/ruff-output.md
 reviewctl ingest --static ruff --input /tmp/ruff-output.md
 
 # Example for pytest
@@ -529,10 +677,12 @@ reviewctl ingest --static pytest --input /tmp/pytest-output.md
 
 Each tool has a status file in \`statics/<tool>_status.json\`:
 - PENDING: Awaiting execution
+- PENDING_NO_CONFIG: Required by plan but missing runnable config
 - PASS: Tool executed without blocking findings
 - FAIL: Tool execution found blocking issues
 - UNKNOWN: Output ingested but parser could not determine conclusive status
-- SKIP: Not applicable for current stack/config
+- SKIP: Optional tool intentionally skipped for this diff scope
+- NOT_APPLICABLE: Tool does not apply to the current diff scope
 
 ---
 _Generated by reviewctl_

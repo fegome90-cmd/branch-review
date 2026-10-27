@@ -41,6 +41,10 @@ Minimum gate before opening/merging PR:
 - Optional CI-parity static checks on changed files:
   - `BR_BIOME_SINCE=origin/main bash scripts/run-biome-check.sh`
   - `BR_DIFF_RANGE=origin/main...HEAD bash scripts/run-ruff-check.sh`
+- Scope policy for review orchestration:
+  - `reviewctl` is diff-based, not file-list based.
+  - For isolated worktrees, ensure base/target metadata is resolvable before `reviewctl run`.
+  - Prefer scoped statics over repo-wide execution when applicability is limited to the diff.
 
 Typecheck scopes:
 
@@ -80,6 +84,9 @@ Pre-PR scope override:
 1. Hooks/scripts must return actionable errors (`what failed` + `how to fix`).
 2. Avoid exposing secrets in logs, hook output, or PR text.
 3. Keep decisions traceable (plan, checks, and PR notes).
+4. Wrappers should log execution mode explicitly: `api`, `local-fallback`, or `local-direct`.
+5. HTTP `4xx/5xx` from the review API must not degrade silently to local execution.
+6. Static gate status should preserve applicability semantics (`SKIP`, `NOT_APPLICABLE`, `PENDING_NO_CONFIG`) to reduce false noise.
 
 ## 7) Cleanup and safety
 
