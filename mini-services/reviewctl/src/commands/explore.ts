@@ -3,6 +3,11 @@ import path from 'node:path';
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
 import { EXPLORE_DIR, REVIEW_RUNS_DIR } from '../lib/constants.js';
+import {
+  assertReviewBaseUnchanged,
+  getReviewDiffSnapshot,
+  type ReviewDiffSnapshot,
+} from '../lib/review-diff.js';
 import { type PlanCandidate, resolvePlan } from '../lib/plan-resolver.js';
 import {
   detectSensitiveZones,
@@ -15,13 +20,9 @@ import {
   computeDigest,
   copyExplorerFiles,
   ensureDir,
-  getBaseBranch,
-  getChangedFiles,
   getCurrentBranch,
   getCurrentRun,
   getCurrentSha,
-  getDiffStats,
-  getShaForRef,
   saveCurrentRun,
 } from '../lib/utils.js';
 
@@ -58,18 +59,19 @@ export async function exploreCommand(
   const spinner = ora(`Running ${type} explorer...`).start();
 
   try {
-    ensureDir(EXPLORE_DIR);
-
     const run = getCurrentRun();
     if (!run) {
       spinner.fail('No active review run. Run: reviewctl init');
       process.exit(1);
     }
+    const snapshot = getReviewDiffSnapshot(run.base_branch);
+    assertReviewBaseUnchanged(snapshot, run.base_sha);
+    ensureDir(EXPLORE_DIR);
 
     if (type === 'context') {
-      await runContextExplorer(spinner, options.force);
+      await runContextExplorer(spinner, options.force, snapshot);
     } else {
-      await runDiffExplorer(spinner, options.force);
+      await runDiffExplorer(spinner, options.force, snapshot);
     }
 
     // Copy to run directory
@@ -93,7 +95,7 @@ export async function exploreCommand(
   }
 }
 
-async function runContextExplorer(spinner: Ora, force?: boolean) {
+async function runContextExplorer(spinner: Ora, force: boolean | undefined, snapshot: ReviewDiffSnapshot) {
   const outputPath = path.join(EXPLORE_DIR, 'context.md');
 
   if (fs.existsSync(outputPath) && !force) {
@@ -105,14 +107,14 @@ async function runContextExplorer(spinner: Ora, force?: boolean) {
   const stack = await detectStack();
 
   spinner.text = 'Analyzing changed files...';
-  const changedFiles = getChangedFiles();
+  const changedFiles = snapshot.changedFiles;
   const sensitiveZones = detectSensitiveZones(changedFiles);
 
   spinner.text = 'Determining third agent...';
   const thirdAgent = determineThirdAgent(stack, sensitiveZones);
 
   const branch = getCurrentBranch();
-  const baseBranch = getBaseBranch();
+  const baseBranch = snapshot.baseRef;
 
   // Generate context.md
   const content = generateContextMd(
@@ -283,7 +285,7 @@ function getStaticTools(
   return tools;
 }
 
-async function runDiffExplorer(spinner: Ora, force?: boolean) {
+async function runDiffExplorer(spinner: Ora, force: boolean | undefined, snapshot: ReviewDiffSnapshot) {
   const outputPath = path.join(EXPLORE_DIR, 'diff.md');
 
   if (fs.existsSync(outputPath) && !force) {
@@ -292,17 +294,17 @@ async function runDiffExplorer(spinner: Ora, force?: boolean) {
   }
 
   spinner.text = 'Analyzing diff stats...';
-  const diffStats = getDiffStats();
-  const changedFiles = getChangedFiles();
+  const diffStats = snapshot.stats;
+  const changedFiles = snapshot.changedFiles;
 
   spinner.text = 'Resolving plan...';
   const planResult = await resolvePlan();
 
   spinner.text = 'Generating diff analysis...';
   const branch = getCurrentBranch();
-  const baseBranch = getBaseBranch();
-  const baseSha = getShaForRef(baseBranch);
-  const headSha = getCurrentSha();
+  const baseBranch = snapshot.baseRef;
+  const baseSha = snapshot.baseSha;
+  const headSha = snapshot.headSha;
 
   const content = generateDiffMd(
     diffStats,
@@ -312,6 +314,7 @@ async function runDiffExplorer(spinner: Ora, force?: boolean) {
     baseBranch,
     baseSha,
     headSha,
+    snapshot.mergeBaseSha,
   );
   fs.writeFileSync(outputPath, content);
 
@@ -345,6 +348,7 @@ function generateDiffMd(
   baseBranch: string,
   baseSha: string,
   headSha: string,
+  mergeBaseSha: string,
 ): string {
   const timestamp = new Date().toISOString();
   const run = getCurrentRun();
@@ -357,7 +361,8 @@ function generateDiffMd(
 - **Base Branch**: ${baseBranch}
 - **Base SHA**: ${baseSha}
 - **Head SHA**: ${headSha}
-- **Diff Range**: ${baseSha}...${headSha}
+- **Merge-base SHA**: ${mergeBaseSha}
+- **Effective Diff**: ${mergeBaseSha}..${headSha}
 - **Generated**: ${timestamp}
 
 ## Diffstat Summary
