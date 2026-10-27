@@ -43,6 +43,7 @@ export function assertMergeEvidence(
   run: RunMetadata,
   final: unknown,
   snapshot: MergeSnapshot,
+  requiredAgents: readonly string[],
 ): void {
   if (!/^run_[a-zA-Z0-9_-]+$/.test(run.run_id)) {
     throw new Error('Cannot merge: invalid run ID');
@@ -114,10 +115,16 @@ export function assertMergeEvidence(
     throw new Error('Cannot merge: inconsistent blocking findings or static gates');
   }
   if (
+    !Array.isArray(requiredAgents) ||
+    requiredAgents.length === 0 ||
+    new Set(requiredAgents).size !== requiredAgents.length ||
+    requiredAgents.some(
+      (name) => typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name),
+    ) ||
     !isRecord(final.agent_verdicts) ||
-    Object.keys(final.agent_verdicts).length === 0 ||
+    requiredAgents.some((name) => final.agent_verdicts[name] !== 'PASS') ||
     Object.values(final.agent_verdicts).some((value) => value !== 'PASS')
   ) {
-    throw new Error('Cannot merge: agent review evidence is incomplete');
+    throw new Error('Cannot merge: required agent review evidence is incomplete');
   }
 }

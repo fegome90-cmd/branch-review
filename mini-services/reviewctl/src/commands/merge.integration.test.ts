@@ -59,6 +59,14 @@ function createRepo() {
   const runsRoot = path.join(cwd, '_ctx', 'review_runs');
   const runDir = path.join(runsRoot, run.run_id);
   fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(runDir, 'plan.json'),
+    JSON.stringify({
+      required_agents: ['code-reviewer'],
+      optional_agents: [],
+      statics: [],
+    }),
+  );
   const writeState = () => {
     fs.writeFileSync(
       path.join(runsRoot, 'current.json'),
@@ -258,6 +266,46 @@ describe('reviewctl merge with real synthetic Git repositories', () => {
     expect(git(f.cwd, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ')[2]).toBe(
       f.headSha,
     );
+  });
+
+
+  test('blocks merge when a required reviewer verdict is missing', () => {
+    const f = createRepo();
+    const plan = path.join(
+      f.cwd, '_ctx', 'review_runs', f.run.run_id, 'plan.json',
+    );
+    fs.writeFileSync(
+      plan,
+      JSON.stringify({
+        required_agents: ['code-reviewer', 'code-simplifier'],
+        optional_agents: [],
+        statics: [],
+      }),
+    );
+    const result = merge(f.cwd);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('required agent review evidence is incomplete');
+    expect(git(f.cwd, 'branch', '--show-current')).toBe('review/test');
+  });
+
+  test('reports non-ancestor base without changing branch', () => {
+    const f = createRepo();
+    const unrelated = git(
+      f.cwd,
+      'commit-tree',
+      git(f.cwd, 'rev-parse', 'HEAD^{tree}'),
+      '-m',
+      'unrelated root',
+    );
+    git(f.cwd, 'branch', '-f', 'main', unrelated);
+    f.run.base_sha = unrelated.slice(0, 7);
+    f.final.reviewed_base_sha = unrelated;
+    f.writeState();
+
+    const result = merge(f.cwd);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('reviewed base is not an ancestor');
+    expect(git(f.cwd, 'branch', '--show-current')).toBe('review/test');
   });
 
 

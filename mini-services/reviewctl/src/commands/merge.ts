@@ -4,6 +4,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
 import { assertMergeEvidence, isSafeBranchName } from '../lib/merge-evidence.js';
+import { loadPlanJson } from '../lib/plan-utils.js';
 import { getCurrentRun, getRunDir } from '../lib/utils.js';
 
 function git(args: string[]): string {
@@ -54,21 +55,38 @@ export async function mergeCommand(options: {
       throw new Error('Cannot merge: final.json is missing');
     }
     const final: unknown = JSON.parse(fs.readFileSync(finalPath, 'utf-8'));
+    const plan = loadPlanJson(getRunDir(run.run_id));
+    if (!plan || !Array.isArray(plan.required_agents)) {
+      throw new Error('Cannot merge: required reviewer plan is missing');
+    }
     const current = {
       branch: git(['branch', '--show-current']),
       headSha: resolveCommit('HEAD'),
       baseSha: resolveCommit(`refs/heads/${run.base_branch}`),
     };
 
-    assertMergeEvidence(run, final, current);
+    assertMergeEvidence(run, final, current, plan.required_agents);
     assertCleanWorktree();
 
     // Never merge unrelated histories or a base that is not in the reviewed HEAD.
-    execFileSync(
-      'git',
-      ['merge-base', '--is-ancestor', current.baseSha, current.headSha],
-      { stdio: 'ignore' },
-    );
+    try {
+      execFileSync(
+        'git',
+        ['merge-base', '--is-ancestor', current.baseSha, current.headSha],
+        { stdio: 'ignore' },
+      );
+    } catch (error: unknown) {
+      const status =
+        typeof error === 'object' && error !== null && 'status' in error
+          ? error.status
+          : undefined;
+      if (status === 1) {
+        throw new Error(
+          'Cannot merge: reviewed base is not an ancestor of HEAD; rebase and re-run the review',
+        );
+      }
+      throw error;
+    }
 
     // Check immediately again before checkout. Merge the immutable reviewed
     // commit SHA (never a mutable branch ref).

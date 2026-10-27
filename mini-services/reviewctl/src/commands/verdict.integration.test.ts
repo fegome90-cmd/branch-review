@@ -168,4 +168,17 @@ describe('reviewctl verdict integration', () => {
     expect(final.static_gate.blocking).toEqual([]);
   });
 
+  it('returns STALE and writes final.json when the base ref disappears', () => {
+    const f = fixture('PASS');
+    git(f.cwd, 'branch', '-D', 'main');
+    const output = verdict(f.cwd);
+    expect(output.status).toBe(2);
+    const final = JSON.parse(
+      fs.readFileSync(path.join(f.dir, 'final.json'), 'utf-8'),
+    );
+    expect(final.verdict).toBe('STALE');
+    expect(final.merge_ready).toBe(false);
+  });
+
+
 });

@@ -46,7 +46,7 @@ function fixture() {
 describe('merge evidence fail-closed gate', () => {
   test('accepts a complete matching local review', () => {
     const f = fixture();
-    expect(() => assertMergeEvidence(f.run, f.final, f.snapshot)).not.toThrow();
+    expect(() => assertMergeEvidence(f.run, f.final, f.snapshot, ['code-reviewer'])).not.toThrow();
   });
 
   const scenarios = [
@@ -72,7 +72,7 @@ describe('merge evidence fail-closed gate', () => {
     test(`blocks ${name}`, () => {
       const f = fixture();
       mutate(f);
-      expect(() => assertMergeEvidence(f.run, f.final, f.snapshot)).toThrow(/Cannot merge/);
+      expect(() => assertMergeEvidence(f.run, f.final, f.snapshot, ['code-reviewer'])).toThrow(/Cannot merge/);
     });
   }
 
@@ -81,4 +81,36 @@ describe('merge evidence fail-closed gate', () => {
     expect(isSafeBranchName('review/../../main')).toBe(false);
     expect(isSafeBranchName('review/safe')).toBe(true);
   });
+  test('requires all reviewers from plan.json, not merely one PASS', () => {
+    const f = fixture();
+    expect(() =>
+      assertMergeEvidence(
+        f.run,
+        f.final,
+        f.snapshot,
+        ['code-reviewer', 'code-simplifier'],
+      ),
+    ).toThrow('required agent review evidence is incomplete');
+  });
+
+  test('allows additional passing optional agents', () => {
+    const f = fixture();
+    const verdict = {
+      ...f.final,
+      agent_verdicts: {
+        'code-reviewer': 'PASS',
+        'code-simplifier': 'PASS',
+      },
+    };
+    expect(() =>
+      assertMergeEvidence(
+        f.run,
+        verdict,
+        f.snapshot,
+        ['code-reviewer'],
+      ),
+    ).not.toThrow();
+  });
+
+
 });

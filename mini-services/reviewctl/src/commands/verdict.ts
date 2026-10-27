@@ -181,11 +181,16 @@ export async function verdictCommand(options: {
       ['rev-parse', '--verify', 'HEAD^{commit}'],
       { encoding: 'utf-8' },
     ).trim();
-    const reviewedBaseSha = execFileSync(
-      'git',
-      ['rev-parse', '--verify', `refs/heads/${run.base_branch}^{commit}`],
-      { encoding: 'utf-8' },
-    ).trim();
+    let reviewedBaseSha = '';
+    try {
+      reviewedBaseSha = execFileSync(
+        'git',
+        ['rev-parse', '--verify', `refs/heads/${run.base_branch}^{commit}`],
+        { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] },
+      ).trim();
+    } catch {
+      // Missing base ref is treated as STALE, with a diagnostic final.json.
+    }
     // The base is part of the reviewed diff. A moved or unknown base is STALE.
     const baseUnchanged =
       typeof run.base_sha === 'string' &&
