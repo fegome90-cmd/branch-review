@@ -9,9 +9,9 @@ import { loadPlanJson } from '../lib/plan-utils.js';
 import { detectInteractiveTTY } from '../lib/tui/detection.js';
 import { runWithPlainOutput, runWithTUI } from '../lib/tui/run-modes.js';
 import type { WorkflowReporter } from '../lib/tui/types.js';
+import { assertReviewBaseUnchanged, getReviewDiffSnapshot } from '../lib/review-diff.js';
 import {
   computeFileDigest,
-  getChangedFiles,
   getCurrentRun,
   getCurrentSha,
   getRunDir,
@@ -152,6 +152,9 @@ async function executeRunWorkflow(
     throw new Error('No active review run. Run: reviewctl init');
   }
 
+  // Validate the full diff before marking this run active or generating tasks.
+  const snapshot = getReviewDiffSnapshot(run.base_branch);
+  assertReviewBaseUnchanged(snapshot, run.base_sha);
   const runDir = getRunDir(run.run_id);
 
   reporter.setRunMeta({
@@ -255,7 +258,7 @@ async function executeRunWorkflow(
     status: 'RUNNING',
   });
 
-  await generateStaticsRequests(run.run_id, runDir);
+  await generateStaticsRequests(run.run_id, runDir, snapshot.changedFiles);
 
   reporter.setPhase({
     key: 'statics',
@@ -543,6 +546,7 @@ export function evaluateStaticToolRequest(input: {
 async function generateStaticsRequests(
   _runId: string,
   runDir: string,
+  changedFiles: string[],
 ): Promise<void> {
   const staticsDir = path.join(runDir, 'statics');
   const reportsDir = path.join(runDir, 'reports');
@@ -558,8 +562,6 @@ async function generateStaticsRequests(
   if (!run) {
     throw new Error('No active review run. Run: reviewctl init');
   }
-
-  const changedFiles = getChangedFiles(run.base_branch);
 
   // Load plan.json to get required/optional statics
   const planJson = loadPlanJson(runDir);
