@@ -114,6 +114,7 @@ export function assertMergeEvidence(
   ) {
     throw new Error('Cannot merge: inconsistent blocking findings or static gates');
   }
+  const agentVerdicts = final.agent_verdicts;
   if (
     !Array.isArray(requiredAgents) ||
     requiredAgents.length === 0 ||
@@ -121,9 +122,9 @@ export function assertMergeEvidence(
     requiredAgents.some(
       (name) => typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name),
     ) ||
-    !isRecord(final.agent_verdicts) ||
-    requiredAgents.some((name) => final.agent_verdicts[name] !== 'PASS') ||
-    Object.values(final.agent_verdicts).some((value) => value !== 'PASS')
+    !isRecord(agentVerdicts) ||
+    requiredAgents.some((name) => agentVerdicts[name] !== 'PASS') ||
+    Object.values(agentVerdicts).some((value) => value !== 'PASS')
   ) {
     throw new Error('Cannot merge: required agent review evidence is incomplete');
   }
