@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
@@ -9,10 +8,10 @@ import {
   type AgentVerdict,
 } from '../lib/review-gate.js';
 import { loadPlanJson } from '../lib/plan-utils.js';
+import { assertReviewBaseUnchanged, getReviewDiffSnapshot, type ReviewDiffSnapshot } from '../lib/review-diff.js';
 import {
   getCurrentRun,
   getCurrentSha,
-  getDiffStats,
   getRunDir,
   saveCurrentRun,
 } from '../lib/utils.js';
@@ -175,27 +174,29 @@ export async function verdictCommand(options: {
 
     // Re-evaluate HEAD and every report after collection; a plan or report is
     // never a merge authorization by itself.
-    const observedHead = getCurrentSha();
-    const reviewedHeadSha = execFileSync(
-      'git',
-      ['rev-parse', '--verify', 'HEAD^{commit}'],
-      { encoding: 'utf-8' },
-    ).trim();
-    let reviewedBaseSha = '';
+    let snapshot: ReviewDiffSnapshot;
     try {
-      reviewedBaseSha = execFileSync(
-        'git',
-        ['rev-parse', '--verify', `refs/heads/${run.base_branch}^{commit}`],
-        { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] },
-      ).trim();
-    } catch {
-      // Missing base ref is treated as STALE, with a diagnostic final.json.
+      snapshot = getReviewDiffSnapshot(run.base_branch);
+      assertReviewBaseUnchanged(snapshot, run.base_sha);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      spinner.warn(chalk.yellow('STALE: review diff scope cannot be verified'));
+      fs.writeFileSync(
+        path.join(runDir, 'final.json'),
+        JSON.stringify({
+          run_id: run.run_id,
+          verdict: 'STALE',
+          status: 'diff_scope_unavailable',
+          reason,
+          merge_ready: false,
+          timestamp: new Date().toISOString(),
+        }, null, 2),
+      );
+      process.exit(2);
     }
-    // The base is part of the reviewed diff. A moved or unknown base is STALE.
-    const baseUnchanged =
-      typeof run.base_sha === 'string' &&
-      /^[0-9a-f]{7,64}$/.test(run.base_sha) &&
-      reviewedBaseSha.startsWith(run.base_sha);
+    const observedHead = getCurrentSha();
+    const reviewedHeadSha = snapshot.headSha;
+    const reviewedBaseSha = snapshot.baseSha;
     const fullHeadMatches = reviewedHeadSha.startsWith(observedHead);
     const evaluatedState = evaluateReviewGate({
       expectedHead: run.head_sha_at_plan,
@@ -209,9 +210,7 @@ export async function verdictCommand(options: {
       p0Count: aggregated.p0Total,
       staticBlockers: staticGate.blocking.length,
     });
-    const gateState = baseUnchanged && fullHeadMatches
-      ? evaluatedState
-      : 'STALE';
+    const gateState = fullHeadMatches ? evaluatedState : 'STALE';
     if (gateState !== 'PASS' && gateState !== 'FAIL') {
       spinner.warn(chalk.yellow(`${gateState}: Review is not eligible for PASS`));
       fs.writeFileSync(
@@ -250,6 +249,7 @@ export async function verdictCommand(options: {
       staticGate,
       reviewedHeadSha,
       reviewedBaseSha,
+      snapshot.stats,
     );
     fs.writeFileSync(
       path.join(runDir, 'final.json'),
@@ -680,7 +680,6 @@ function generateFinalMd(
   staticGate: StaticGateEvaluation,
 ): string {
   const timestamp = new Date().toISOString();
-  const _diffStats = getDiffStats();
   const rejectedAgents = Object.entries(aggregated.agentVerdicts)
     .filter(([, decision]) => decision === 'FAIL')
     .map(([name]) => name);
@@ -931,8 +930,8 @@ function generateFinalJson(
   staticGate: StaticGateEvaluation,
   reviewedHeadSha: string,
   reviewedBaseSha: string,
+  diffStats: ReviewDiffSnapshot['stats'],
 ): FinalResult {
-  const diffStats = getDiffStats();
 
   return {
     run_id: run.run_id,
