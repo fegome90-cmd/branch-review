@@ -98,8 +98,8 @@ export function parseRuffSummary(content: string): StaticSummary {
 
   if (content.trim().length === 0) {
     return {
-      status: 'PASS',
-      reason: 'Ruff output is empty (no findings reported)',
+      status: 'UNKNOWN',
+      reason: 'Ruff output is empty (execution success unverified)',
       issues: 0,
       blockingIssues: 0,
       warningIssues: 0,
@@ -133,8 +133,8 @@ export function parseBiomeSummary(content: string): StaticSummary {
 
   if (content.trim().length === 0) {
     return {
-      status: 'PASS',
-      reason: 'Biome output is empty (no findings reported)',
+      status: 'UNKNOWN',
+      reason: 'Biome output is empty (execution success unverified)',
       issues: 0,
       blockingIssues: 0,
       warningIssues: 0,
