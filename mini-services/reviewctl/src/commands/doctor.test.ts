@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'bun:test';
 
-const cliPath = path.resolve('mini-services/reviewctl/src/index.ts');
+const cliPath = fileURLToPath(new URL('../index.ts', import.meta.url));
 
 describe('reviewctl doctor exit status', () => {
   for (const json of [true, false]) {

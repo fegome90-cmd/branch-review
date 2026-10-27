@@ -40,8 +40,16 @@ function createFeatureRepo(): string {
 
 afterEach(() => {
   process.chdir(originalCwd);
-  process.env.REVIEWCTL_SAFE_MODE = originalSafeMode;
-  process.env.REVIEWCTL_ARTIFACT_ROOT = originalArtifactRoot;
+  if (originalSafeMode === undefined) {
+    delete process.env.REVIEWCTL_SAFE_MODE;
+  } else {
+    process.env.REVIEWCTL_SAFE_MODE = originalSafeMode;
+  }
+  if (originalArtifactRoot === undefined) {
+    delete process.env.REVIEWCTL_ARTIFACT_ROOT;
+  } else {
+    process.env.REVIEWCTL_ARTIFACT_ROOT = originalArtifactRoot;
+  }
 
   while (createdDirs.length > 0) {
     const dir = createdDirs.pop();

@@ -86,7 +86,7 @@ function createRepoAt(
     cwd: repoDir,
     stdio: 'ignore',
   });
-  execSync(`git checkout -b ${branchName}`, {
+  execFileSync('git', ['checkout', '-b', branchName], {
     cwd: repoDir,
     stdio: 'ignore',
   });
