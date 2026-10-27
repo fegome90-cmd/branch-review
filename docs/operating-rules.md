@@ -79,6 +79,7 @@ Pre-PR scope override:
 4. Merge GitHub PRs via `flow:merge` after required checks. A local `reviewctl merge`
    requires matching, complete commit-bound review evidence, performs only a
    local Git merge, and never pushes. Its legacy `--force` flag is rejected.
+   Review artifacts are mutable local files, not cryptographically signed approvals.
 5. Sync local main after merge.
 
 ## 6) Error and observability standards

@@ -183,7 +183,7 @@ export async function verdictCommand(options: {
     ).trim();
     const reviewedBaseSha = execFileSync(
       'git',
-      ['rev-parse', '--verify', 'refs/heads/' + run.base_branch + '^{commit}'],
+      ['rev-parse', '--verify', `refs/heads/${run.base_branch}^{commit}`],
       { encoding: 'utf-8' },
     ).trim();
     // The base is part of the reviewed diff. A moved or unknown base is STALE.

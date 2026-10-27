@@ -57,6 +57,7 @@ describe('merge evidence fail-closed gate', () => {
     ['wrong run id', (f: ReturnType<typeof fixture>) => { f.final.run_id = 'run_other'; }],
     ['wrong branch', (f: ReturnType<typeof fixture>) => { f.snapshot.branch = 'review/other'; }],
     ['uncompleted review', (f: ReturnType<typeof fixture>) => { f.run.status = 'pending_ingest'; }],
+    ['missing plan resolution', (f: ReturnType<typeof fixture>) => { f.run.plan_status = 'MISSING'; }],
     ['plan head stale', (f: ReturnType<typeof fixture>) => { f.run.head_sha_at_plan = 'd'.repeat(7); }],
     ['plan base stale', (f: ReturnType<typeof fixture>) => { f.run.base_sha = 'd'.repeat(7); }],
     ['drift override', (f: ReturnType<typeof fixture>) => { f.run.drift_override_used = true; }],
@@ -68,7 +69,7 @@ describe('merge evidence fail-closed gate', () => {
   ] as const;
 
   for (const [name, mutate] of scenarios) {
-    test('blocks ' + name, () => {
+    test(`blocks ${name}`, () => {
       const f = fixture();
       mutate(f);
       expect(() => assertMergeEvidence(f.run, f.final, f.snapshot)).toThrow(/Cannot merge/);

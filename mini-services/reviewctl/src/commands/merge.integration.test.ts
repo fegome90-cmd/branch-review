@@ -188,7 +188,7 @@ describe('reviewctl merge with real synthetic Git repositories', () => {
   test('rejects injected branch metadata without executing commands', () => {
     const f = createRepo();
     const marker = path.join(f.cwd, 'shell-executed');
-    f.run.base_branch = 'main;touch ' + marker;
+    f.run.base_branch = `main;touch ${marker}`;
     f.final.base_branch = f.run.base_branch;
     f.writeState();
     const result = merge(f.cwd);
@@ -208,4 +208,57 @@ describe('reviewctl merge with real synthetic Git repositories', () => {
     expect(result.stderr).toContain('current branch differs');
     expect(git(f.cwd, 'branch', '--show-current')).toBe('review/test');
   });
+  test('real ingest -> verdict -> merge uses both full commit SHAs', () => {
+    const f = createRepo();
+    const root = path.join(f.cwd, '_ctx', 'review_runs', f.run.run_id);
+    fs.mkdirSync(path.join(root, 'reports'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'statics'), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, 'plan.json'),
+      JSON.stringify({
+        required_agents: ['code-reviewer'],
+        optional_agents: [],
+        statics: [],
+      }),
+    );
+    const report = path.join(root, 'reviewer-input.md');
+    fs.writeFileSync(
+      report,
+      '## Summary\nNo findings\n\n## Verdict\n**PASS** - Reviewed synthetic change\n',
+    );
+    const options = {
+      cwd: f.cwd,
+      encoding: 'utf-8' as const,
+      env: {
+        ...process.env,
+        REVIEWCTL_SAFE_MODE: '0',
+        REVIEWCTL_ARTIFACT_ROOT: '',
+      },
+    };
+    const ingest = spawnSync(
+      'bun',
+      [cliPath, 'ingest', '--agent', 'code-reviewer', '--input', report],
+      options,
+    );
+    expect(ingest.status).toBe(0);
+    const verdict = spawnSync('bun', [cliPath, 'verdict', '--json'], options);
+    expect(verdict.status).toBe(0);
+
+    const final = JSON.parse(
+      fs.readFileSync(path.join(root, 'final.json'), 'utf-8'),
+    );
+    expect(final.verdict).toBe('PASS');
+    expect(final.reviewed_head_sha).toBe(f.headSha);
+    expect(final.reviewed_base_sha).toBe(f.baseSha);
+    expect(final.merge_ready).toBe(false);
+
+    const merged = merge(f.cwd);
+    expect(merged.status).toBe(0);
+    expect(git(f.cwd, 'branch', '--show-current')).toBe('main');
+    expect(git(f.cwd, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ')[2]).toBe(
+      f.headSha,
+    );
+  });
+
+
 });

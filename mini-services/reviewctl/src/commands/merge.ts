@@ -11,7 +11,7 @@ function git(args: string[]): string {
 }
 
 function resolveCommit(ref: string): string {
-  return git(['rev-parse', '--verify', ref + '^{commit}']);
+  return git(['rev-parse', '--verify', `${ref}^{commit}`]);
 }
 
 function assertCleanWorktree(): void {
@@ -57,7 +57,7 @@ export async function mergeCommand(options: {
     const current = {
       branch: git(['branch', '--show-current']),
       headSha: resolveCommit('HEAD'),
-      baseSha: resolveCommit('refs/heads/' + run.base_branch),
+      baseSha: resolveCommit(`refs/heads/${run.base_branch}`),
     };
 
     assertMergeEvidence(run, final, current);
@@ -75,19 +75,19 @@ export async function mergeCommand(options: {
     if (
       git(['branch', '--show-current']) !== current.branch ||
       resolveCommit('HEAD') !== current.headSha ||
-      resolveCommit('refs/heads/' + run.base_branch) !== current.baseSha
+      resolveCommit(`refs/heads/${run.base_branch}`) !== current.baseSha
     ) {
       throw new Error('Cannot merge: branch or commit changed during preflight');
     }
     assertCleanWorktree();
 
-    spinner.text = 'Merging reviewed commit into local ' + run.base_branch;
+    spinner.text = `Merging reviewed commit into local ${run.base_branch}`;
     execFileSync('git', ['switch', run.base_branch], { stdio: 'inherit' });
 
     if (resolveCommit('HEAD') !== current.baseSha) {
       throw new Error('Cannot merge: base changed during checkout');
     }
-    const message = 'Merge review: ' + run.branch;
+    const message = `Merge review: ${run.branch}`;
     if (options.squash) {
       execFileSync('git', ['merge', '--squash', '--', current.headSha], {
         stdio: 'inherit',
@@ -103,8 +103,8 @@ export async function mergeCommand(options: {
 
     // No implicit push: local PASS is not approval for GitHub PR merge.
     spinner.succeed(chalk.green('Local merge completed'));
-    console.log(chalk.gray('  Reviewed HEAD: ' + current.headSha));
-    console.log(chalk.gray('  Base: ' + run.base_branch));
+    console.log(chalk.gray(`  Reviewed HEAD: ${current.headSha}`));
+    console.log(chalk.gray(`  Base: ${run.base_branch}`));
     console.log(chalk.yellow('  No push performed. Verify GitHub checks and approvals before publishing.'));
   } catch (error) {
     spinner.fail(chalk.red('Local merge blocked or failed'));

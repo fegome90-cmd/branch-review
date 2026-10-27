@@ -58,6 +58,9 @@ export function assertMergeEvidence(
   if (snapshot.branch !== run.branch) {
     throw new Error('Cannot merge: current branch differs from reviewed branch');
   }
+  if (run.plan_status !== 'FOUND') {
+    throw new Error('Cannot merge: review plan was not resolved');
+  }
   if (run.status !== 'completed') {
     throw new Error('Cannot merge: review run is not complete');
   }
