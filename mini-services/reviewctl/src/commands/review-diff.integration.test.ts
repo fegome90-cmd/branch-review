@@ -107,7 +107,9 @@ describe('reviewctl diff scope across CLI phases', () => {
       report,
       '## Summary\nSynthetic review: no findings\n\n## Verdict\n**PASS** - Synthetic fixture\n',
     );
-    for (const agent of plan.required_agents) {
+    // The current aggregator includes optional requested agents in gate state;
+    // ingest every generated request in this end-to-end success fixture.
+    for (const agent of [...plan.required_agents, ...plan.optional_agents]) {
       check(f.cwd, 'ingest', '--agent', agent, '--input', report);
     }
 
