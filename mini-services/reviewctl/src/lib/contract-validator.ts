@@ -53,7 +53,7 @@ export function parseDeclaredVerdict(content: string): DeclaredVerdict {
 
   const decisions = new Set<'PASS' | 'FAIL'>();
   for (const line of lines.slice(headingIndex + 1)) {
-    if (/^#{1,2}[ \t]+\S/.test(line)) break;
+    if (/^##[ \t]+\S/.test(line)) break;
     const match = line.trim().match(
       /^(?:#{1,6}[ \t]+)?(?:[-*][ \t]+)?(?:\*\*)?(PASS|FAIL)(?:\*\*)?(?=$|[ \t.:;,\u2013\u2014-])/i,
     );
