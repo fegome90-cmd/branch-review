@@ -53,6 +53,10 @@ Scope rules:
 - `reviewctl` operates on branch diff / worktree diff range, not on ad-hoc file lists.
 - In isolated worktrees, resolve base/target branch metadata before `run`.
 - Fail early if the run has no resolvable diff scope.
+- The diff base is the branch chosen by `reviewctl init --base`, never a
+  silently substituted `main` or `HEAD~1`. Missing/shallow history and
+  ambiguous merge bases block review rather than generating empty findings.
+  Obtain missing local history explicitly, then restart the review.
 
 Static gate rules:
 
