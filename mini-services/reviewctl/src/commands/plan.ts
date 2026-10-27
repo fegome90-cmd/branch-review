@@ -129,6 +129,12 @@ export async function planCommand(options: {
       changedFiles,
     );
 
+    // Guard against HEAD moving while the plan content is built, before writes.
+    const headAtPlan = getCurrentSha();
+    if (!snapshot.headSha.startsWith(headAtPlan)) {
+      throw new Error('DIFF_SCOPE_CHANGED: HEAD changed since planning snapshot.');
+    }
+
     // Save plan
     const runDir = getRunDir(run.run_id);
     const planPath = path.join(runDir, 'plan.md');
@@ -143,10 +149,6 @@ export async function planCommand(options: {
 
     // Update run status + digest snapshots
     run.status = 'planning';
-    const headAtPlan = getCurrentSha();
-    if (!snapshot.headSha.startsWith(headAtPlan)) {
-      throw new Error('DIFF_SCOPE_CHANGED: HEAD changed since planning snapshot.');
-    }
     run.head_sha_at_plan = headAtPlan;
     run.plan_digest = computeDigest(planContent);
     saveCurrentRun(run);
