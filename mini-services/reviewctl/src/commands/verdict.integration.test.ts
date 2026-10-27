@@ -23,6 +23,7 @@ function fixture(agentVerdict: 'PASS' | 'FAIL', missing = false, stale = false) 
   git(cwd, '-c', 'commit.gpgsign=false', 'commit', '-m', 'init');
   git(cwd, 'checkout', '-b', 'review/fixture');
   const head = git(cwd, 'rev-parse', '--short', 'HEAD');
+  const baseSha = git(cwd, 'rev-parse', '--short', 'main');
   const dir = path.join(cwd, '_ctx', 'review_runs', 'run_fixture');
   const reports = path.join(dir, 'reports');
   const tasks = path.join(dir, 'tasks', 'code-reviewer');
@@ -55,6 +56,7 @@ function fixture(agentVerdict: 'PASS' | 'FAIL', missing = false, stale = false) 
       status: 'pending_ingest',
       plan_status: 'MISSING',
       head_sha_at_plan: stale ? 'deadbeef' : head,
+      base_sha: baseSha,
       drift_status: 'ALIGNED',
     }),
   );
@@ -165,5 +167,18 @@ describe('reviewctl verdict integration', () => {
     expect(final.verdict).toBe('PASS');
     expect(final.static_gate.blocking).toEqual([]);
   });
+
+  it('returns STALE and writes final.json when the base ref disappears', () => {
+    const f = fixture('PASS');
+    git(f.cwd, 'branch', '-D', 'main');
+    const output = verdict(f.cwd);
+    expect(output.status).toBe(2);
+    const final = JSON.parse(
+      fs.readFileSync(path.join(f.dir, 'final.json'), 'utf-8'),
+    );
+    expect(final.verdict).toBe('STALE');
+    expect(final.merge_ready).toBe(false);
+  });
+
 
 });

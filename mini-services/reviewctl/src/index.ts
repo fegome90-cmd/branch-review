@@ -111,7 +111,7 @@ program
   .command('merge')
   .description('Merge current review branch after PASS verdict')
   .option('--squash', 'Use squash merge')
-  .option('--force', 'Force merge even with warnings')
+  .option('--force', 'Deprecated: rejected; review evidence cannot be bypassed')
   .action(mergeCommand);
 
 // Cleanup command

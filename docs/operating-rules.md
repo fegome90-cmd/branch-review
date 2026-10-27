@@ -76,7 +76,10 @@ Pre-PR scope override:
    - `bun run flow:pr-comments -- reply --comment-id <id> --body "..."`
    - Optional batch mode (explicit opt-in):
      - `bun run flow:pr-comments -- reply --apply --from <todo.md|replies.json> --dry-run`
-4. Merge via CLI wrapper with deterministic mode.
+4. Merge GitHub PRs via `flow:merge` after required checks. A local `reviewctl merge`
+   requires matching, complete commit-bound review evidence, performs only a
+   local Git merge, and never pushes. Its legacy `--force` flag is rejected.
+   Review artifacts are mutable local files, not cryptographically signed approvals.
 5. Sync local main after merge.
 
 ## 6) Error and observability standards
