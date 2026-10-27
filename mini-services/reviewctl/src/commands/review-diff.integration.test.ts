@@ -91,8 +91,8 @@ describe('reviewctl diff scope across CLI phases', () => {
     expect(diff).toContain(f.baseSha);
     expect(diff).toContain(f.headSha);
     expect(diff).toContain('Merge-base SHA');
-    expect(diff).toContain('feature.ts');
-    expect(diff).not.toContain('release.ts');
+    // The diff report summarizes scope by metrics/directories, not filenames.
+    // Comparing against main would contain two files; release/1.0 has one.
     expect(diff).toContain('| Files Changed | 1 |');
 
     const plan = JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf-8'));
