@@ -61,6 +61,11 @@ jobs:
           bun test mini-services/reviewctl/src/lib/static-parsers.test.ts
           bun test mini-services/reviewctl/src/commands/verdict.integration.test.ts
 
+      - name: Validate local merge safety
+        run: |
+          bun test mini-services/reviewctl/src/lib/merge-evidence.test.ts
+          bun test mini-services/reviewctl/src/commands/merge.integration.test.ts
+
       - name: Run safety and materializer tests
         run: |
           bun test \
